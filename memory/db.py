@@ -221,7 +221,7 @@ def insert_decision(conn: sqlite3.Connection, decision: Dict) -> int:
 def insert_pattern(conn: sqlite3.Connection, pattern: Dict) -> int:
     """Insert a pattern. Returns the ID."""
     cursor = conn.execute("""
-        INSERT INTO decisions (session_id, pattern_type, description, code_example, related_files)
+        INSERT INTO patterns (session_id, pattern_type, description, code_example, related_files)
         VALUES (?, ?, ?, ?, ?)
     """, (
         pattern.get("session_id"),
@@ -299,8 +299,9 @@ def get_entity_graph(conn: sqlite3.Connection, entity_name: str, depth: int = 1)
     """Get entity and its connected neighbors."""
     # Get the entity
     cursor = conn.execute("SELECT * FROM entities WHERE name = ?", (entity_name,))
-    entity = dict(cursor.fetchone()) if cursor.fetchone else None
-    
+    row = cursor.fetchone()
+    entity = dict(row) if row else None
+
     if not entity:
         return {}
     

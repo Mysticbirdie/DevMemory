@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+
+# DevMemory local data (never commit the user's extracted memory)
+.dev-memory/
+*.db
+*.sqlite
+*.sqlite3
+
+# OS / editor
+.DS_Store
