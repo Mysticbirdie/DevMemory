@@ -1,33 +1,6 @@
 # Cross-Tool Memory System
 
-**Universal Memory Layer for Developers** — Automatically captures, indexes, and makes searchable everything you do across your development tools.
-
-## What It Does
-
-Instead of each tool (IDE, CLI, Git) keeping its own isolated history, this system:
-- **Unifies** activity from multiple sources into one local SQLite database
-- **Extracts intelligence** — entities, decisions, patterns, file changes
-- **Makes it searchable** — by content, time, tool, or topic
-- **Surfaces context** — when you need to recall past work
-
-## Who Is This For?
-
-| Developer Type | Tools | Value |
-|----------------|-------|-------|
-| **Windsurf/Cascade** + Claude CLI | AI IDE + terminal | Full conversation history, code changes |
-| **VS Code + Copilot** | Popular IDE + AI | Parse Copilot chats, VS Code logs |
-| **Cursor IDE** | AI-first editor | Extract AI conversation history |
-| **JetBrains + AI** | IntelliJ/PyCharm | Plugin conversation extraction |
-| **Terminal-first** | vim/tmux/git/claude-cli | CLI sessions + git commits |
-| **Teams** | Shared projects | Aggregate knowledge, onboarding aid |
-
-## Use Cases
-
-1. **Personal Knowledge** — "What was that regex I used last month?"
-2. **Project Archaeology** — "Why was this architecture chosen?"
-3. **Team Onboarding** — Query past decisions and patterns
-4. **Pattern Recognition** — "I've solved this bug 3 times before"
-5. **Auto-Documentation** — Generate decision logs from actual history
+Universal memory layer that sees everything you do across Cascade/Windsurf, Claude CLI, and Git.
 
 ## Quick Start
 
@@ -52,36 +25,12 @@ python3 cli.py entities
 python3 cli.py decisions
 ```
 
-## Importing Claude Web Chats
-
-Claude Web (claude.ai) doesn't have an API, but you can export chats:
-
-```bash
-# 1. Export from claude.ai
-#    - Open any chat
-#    - Click 3-dot menu → Export chat
-#    - Saves to ~/Downloads as "Claude Chat - YYYY-MM-DD HH-MM-SS.json"
-
-# 2. Import to DevMemory
-python3 cli.py import-web --all
-
-# Or import specific file
-python3 cli.py import-web --file "~/Downloads/Claude Chat - 2026-06-08 14-30-00.json"
-```
-
-Imported chats get the same treatment as Cascade/CLI sessions:
-- Full-text searchable
-- Entities extracted (Stella, Redis, etc.)
-- Decisions and patterns identified
-- Merged into your unified memory
-
 ## What It Captures
 
 | Source | What | How |
 |--------|------|-----|
-| **Cascade/Windsurf** | Chat history, tool calls, file edits | Reads `Claude VSCode.log` |
+| **Cascade/Windsurf** | Chat history, tool calls, file edits | Reads internal SQLite DB |
 | **Claude CLI** | Conversations, project memory | Reads `~/.claude/` files |
-| **Claude Web** | Exported chats from claude.ai | Import JSON exports |
 | **Git** | Commits, file changes, diffs | `git log` with stats |
 
 ## What It Produces
@@ -141,14 +90,52 @@ SQLite database at `~/.dev-memory/memory.db`:
 | Command | Description |
 |---------|-------------|
 | `init` | Create database |
-| `extract --all` | Pull from Cascade/CLI/Git |
-| `import-web --all` | Import Claude Web exports |
+| `extract --all` | Pull from all tools |
 | `search <query>` | Full-text search |
 | `recent --days N` | Recent sessions |
 | `entities` | Show concepts |
 | `decisions` | Show active decisions |
 | `stats` | Database stats |
 | `related <entity>` | Entity graph |
+| `sync [--dry-run]` | Sync to Windsurf Memory Banks |
+
+## Windsurf Memory Bank Bridge
+
+Auto-populate your memory banks from DevMemory:
+
+```bash
+# Sync decisions to .cascade/memory/decisions.md
+python3 cli.py sync
+
+# Preview without writing
+python3 cli.py sync --dry-run
+```
+
+Syncs:
+- **Decisions** → `.cascade/memory/decisions.md`
+- **Patterns** → `.cascade/memory/patterns.md`
+- **Progress** → `.claude/memory/progress.md`
+
+## Claude CLI Hook
+
+Auto-extract on every `/exit`:
+
+```bash
+# Add to ~/.bashrc or ~/.zshrc
+source /path/to/dev-memory/hooks/claude-cli-exit.sh
+
+# Now 'claude' wrapper auto-extracts on exit
+claude
+# ... work ...
+/exit
+# 💾 Auto-extract runs
+```
+
+Or manual extraction:
+```bash
+claude-extract        # Full extract + sync
+claude-quick-extract  # Fast single-session
+```
 
 ## Cascade Integration
 
