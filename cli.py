@@ -272,6 +272,63 @@ def cmd_related(args):
     conn.close()
 
 
+def cmd_import_web(args):
+    """Import Claude Web exports."""
+    from memory.extractors.claude_web import ClaudeWebExtractor
+    
+    extractor = ClaudeWebExtractor()
+    
+    if args.all:
+        # Import all found exports
+        sessions = extractor.extract()
+    elif args.file:
+        # Import specific file
+        from pathlib import Path
+        sessions = extractor.extract(specific_file=Path(args.file))
+    else:
+        # Just list available exports
+        sessions = extractor.watch_and_import(auto_import=False)
+        return
+    
+    if not sessions:
+        print("No sessions to import.")
+        return
+    
+    conn = init_db()
+    from memory.db import insert_session, insert_entity, insert_decision
+    from memory.intelligence import EntityExtractor, SessionSummarizer
+    
+    intel_extractor = EntityExtractor()
+    summarizer = SessionSummarizer()
+    
+    total_imported = 0
+    
+    print(f"\n📥 Importing {len(sessions)} Claude Web session(s)...\n")
+    
+    for session in sessions:
+        # Enhance with intelligence
+        intel = intel_extractor.extract_from_session(session)
+        session["tags"] = intel["tags"]
+        session["summary"] = summarizer.summarize(session)
+        
+        session_id = insert_session(conn, session)
+        total_imported += 1
+        
+        # Store entities
+        for entity in intel["entities"]:
+            insert_entity(conn, entity["name"], entity["type"], entity["context"])
+        
+        # Store decisions
+        for decision in intel["decisions"]:
+            decision["session_id"] = session_id
+            insert_decision(conn, decision)
+        
+        print(f"  ✅ {session.get('summary', 'Untitled')[:60]}...")
+    
+    conn.close()
+    print(f"\n✅ Total imported: {total_imported}")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Cross-Tool Memory - Universal memory for Cascade, Claude CLI, and Git"
@@ -326,6 +383,12 @@ def main():
     related_parser.add_argument("--depth", type=int, default=1, help="Graph depth")
     related_parser.add_argument("--limit", type=int, default=10, help="Max results")
     related_parser.set_defaults(func=cmd_related)
+    
+    # import-web
+    import_web_parser = subparsers.add_parser("import-web", help="Import Claude Web exports")
+    import_web_parser.add_argument("--file", help="Specific export file to import")
+    import_web_parser.add_argument("--all", action="store_true", help="Import all found exports")
+    import_web_parser.set_defaults(func=cmd_import_web)
     
     args = parser.parse_args()
     
