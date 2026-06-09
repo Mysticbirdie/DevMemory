@@ -52,12 +52,36 @@ python3 cli.py entities
 python3 cli.py decisions
 ```
 
+## Importing Claude Web Chats
+
+Claude Web (claude.ai) doesn't have an API, but you can export chats:
+
+```bash
+# 1. Export from claude.ai
+#    - Open any chat
+#    - Click 3-dot menu → Export chat
+#    - Saves to ~/Downloads as "Claude Chat - YYYY-MM-DD HH-MM-SS.json"
+
+# 2. Import to DevMemory
+python3 cli.py import-web --all
+
+# Or import specific file
+python3 cli.py import-web --file "~/Downloads/Claude Chat - 2026-06-08 14-30-00.json"
+```
+
+Imported chats get the same treatment as Cascade/CLI sessions:
+- Full-text searchable
+- Entities extracted (Stella, Redis, etc.)
+- Decisions and patterns identified
+- Merged into your unified memory
+
 ## What It Captures
 
 | Source | What | How |
 |--------|------|-----|
-| **Cascade/Windsurf** | Chat history, tool calls, file edits | Reads internal SQLite DB |
+| **Cascade/Windsurf** | Chat history, tool calls, file edits | Reads `Claude VSCode.log` |
 | **Claude CLI** | Conversations, project memory | Reads `~/.claude/` files |
+| **Claude Web** | Exported chats from claude.ai | Import JSON exports |
 | **Git** | Commits, file changes, diffs | `git log` with stats |
 
 ## What It Produces
@@ -117,7 +141,8 @@ SQLite database at `~/.dev-memory/memory.db`:
 | Command | Description |
 |---------|-------------|
 | `init` | Create database |
-| `extract --all` | Pull from all tools |
+| `extract --all` | Pull from Cascade/CLI/Git |
+| `import-web --all` | Import Claude Web exports |
 | `search <query>` | Full-text search |
 | `recent --days N` | Recent sessions |
 | `entities` | Show concepts |
