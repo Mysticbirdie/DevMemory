@@ -234,6 +234,41 @@ def insert_pattern(conn: sqlite3.Connection, pattern: Dict) -> int:
     return cursor.lastrowid
 
 
+def insert_file_activity(conn: sqlite3.Connection, session_id: str, file_path: str,
+                         activity_type: str = "referenced", lines_changed: int = 0,
+                         timestamp: Optional[str] = None):
+    """Record that a file was touched/referenced in a session."""
+    conn.execute("""
+        INSERT INTO file_activity (session_id, file_path, activity_type, lines_changed, timestamp)
+        VALUES (?, ?, ?, ?, ?)
+    """, (session_id, file_path, activity_type, lines_changed, timestamp or datetime.now().isoformat()))
+    conn.commit()
+
+
+def insert_entity_links(conn: sqlite3.Connection, entities: List[Dict]):
+    """Build co-occurrence links among a session's entities.
+
+    Entities mentioned together are linked; repeated co-occurrence accumulates
+    strength. Pairs are order-normalized so (a,b) and (b,a) share one row.
+    """
+    names = [e["name"] for e in entities]
+    pairs: Dict[Tuple[str, str], float] = {}
+    for i, a in enumerate(names):
+        for b in names[i + 1:]:
+            if a == b:
+                continue
+            key = tuple(sorted((a, b)))
+            pairs[key] = pairs.get(key, 0.0) + 1.0
+    if not pairs:
+        return
+    conn.executemany("""
+        INSERT INTO entity_links (entity_a, entity_b, strength)
+        VALUES (?, ?, ?)
+        ON CONFLICT(entity_a, entity_b) DO UPDATE SET strength = strength + excluded.strength
+    """, [(a, b, s) for (a, b), s in pairs.items()])
+    conn.commit()
+
+
 def search_sessions(conn: sqlite3.Connection, query: str, limit: int = 10) -> List[Dict]:
     """Full-text search across sessions."""
     # Simple LIKE search for now; can upgrade to FTS5 later

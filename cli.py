@@ -9,6 +9,10 @@ from datetime import datetime, timedelta
 
 from memory.db import init_db, insert_session, search_sessions, get_recent_sessions
 from memory.db import get_entities, get_active_decisions, get_stats
+from memory.db import (
+    insert_entity, insert_decision, insert_pattern,
+    insert_file_activity, insert_entity_links,
+)
 from memory.extractors import CascadeExtractor, ClaudeCLIExtractor, GitExtractor
 from memory.intelligence import EntityExtractor, SessionSummarizer
 
@@ -20,99 +24,84 @@ def cmd_init(args):
     conn.close()
 
 
+def _ingest_sessions(conn, sessions, extractor, summarizer) -> int:
+    """Run intelligence over sessions and persist everything to the DB.
+
+    Persists: session + turns, entities, decisions, patterns, entity
+    co-occurrence links, and file activity. (Shared by all extractors.)
+    """
+    count = 0
+    for session in sessions:
+        intel = extractor.extract_from_session(session)
+        session["tags"] = intel["tags"]
+        session["summary"] = summarizer.summarize(session)
+
+        session_id = insert_session(conn, session)
+        count += 1
+
+        for entity in intel["entities"]:
+            insert_entity(conn, entity["name"], entity["type"], entity.get("context", ""))
+
+        for decision in intel["decisions"]:
+            decision["session_id"] = session_id
+            insert_decision(conn, decision)
+
+        for pattern in intel["patterns"]:
+            insert_pattern(conn, {
+                "session_id": session_id,
+                "pattern_type": pattern.get("type"),          # extractor uses "type"
+                "description": pattern.get("description"),
+                "code_example": pattern.get("code_example"),
+                "related_files": pattern.get("related_files", []),
+            })
+
+        for fpath in intel["files"]:
+            insert_file_activity(conn, session_id, fpath)
+
+        # Build the entity co-occurrence graph (powers `related`)
+        insert_entity_links(conn, intel["entities"])
+
+    return count
+
+
 def cmd_extract(args):
     """Extract and store data from tools."""
     conn = init_db()
     extractor = EntityExtractor()
     summarizer = SessionSummarizer()
-    
     total_sessions = 0
-    
-    # Cascade
+
     if args.cascade or args.all:
         print("Extracting from Cascade/Windsurf...")
         cascade = CascadeExtractor()
         if cascade.is_available():
             sessions = cascade.extract(limit=args.limit)
-            for session in sessions:
-                # Enhance with intelligence
-                intel = extractor.extract_from_session(session)
-                session["tags"] = intel["tags"]
-                session["summary"] = summarizer.summarize(session)
-                
-                session_id = insert_session(conn, session)
-                total_sessions += 1
-                
-                # Store entities
-                for entity in intel["entities"]:
-                    from memory.db import insert_entity
-                    insert_entity(conn, entity["name"], entity["type"], entity["context"])
-                
-                # Store decisions
-                for decision in intel["decisions"]:
-                    from memory.db import insert_decision
-                    decision["session_id"] = session_id
-                    insert_decision(conn, decision)
-            
+            total_sessions += _ingest_sessions(conn, sessions, extractor, summarizer)
             print(f"  📥 {len(sessions)} Cascade sessions")
         else:
             print("  ⚠️ Cascade data not found")
-    
-    # Claude CLI
+
     if args.claude or args.all:
         print("Extracting from Claude CLI...")
         claude = ClaudeCLIExtractor()
         if claude.is_available():
             sessions = claude.extract(limit=args.limit)
-            for session in sessions:
-                intel = extractor.extract_from_session(session)
-                session["tags"] = intel["tags"]
-                session["summary"] = summarizer.summarize(session)
-                
-                session_id = insert_session(conn, session)
-                total_sessions += 1
-                
-                for entity in intel["entities"]:
-                    from memory.db import insert_entity
-                    insert_entity(conn, entity["name"], entity["type"], entity["context"])
-                
-                for decision in intel["decisions"]:
-                    from memory.db import insert_decision
-                    decision["session_id"] = session_id
-                    insert_decision(conn, decision)
-            
+            total_sessions += _ingest_sessions(conn, sessions, extractor, summarizer)
             print(f"  📥 {len(sessions)} Claude CLI sessions")
         else:
             print("  ⚠️ Claude CLI data not found")
-    
-    # Git
+
     if args.git or args.all:
         print("Extracting from Git...")
         git = GitExtractor()
         if git.is_available():
             since_str = f"{args.since} days ago" if args.since else "30 days ago"
             sessions = git.extract(limit=args.limit, since=since_str)
-            for session in sessions:
-                intel = extractor.extract_from_session(session)
-                session["tags"] = intel["tags"]
-                session["summary"] = summarizer.summarize(session)
-                
-                session_id = insert_session(conn, session)
-                total_sessions += 1
-                
-                for entity in intel["entities"]:
-                    from memory.db import insert_entity
-                    insert_entity(conn, entity["name"], entity["type"], entity["context"])
-                
-                for decision in intel["decisions"]:
-                    from memory.db import insert_decision
-                    decision["session_id"] = session_id
-                    insert_decision(conn, decision)
-            
+            total_sessions += _ingest_sessions(conn, sessions, extractor, summarizer)
             print(f"  📥 {len(sessions)} Git commits")
         else:
             print("  ⚠️ Git data not found")
-    
+
     conn.close()
     print(f"\n✅ Total sessions stored: {total_sessions}")
 

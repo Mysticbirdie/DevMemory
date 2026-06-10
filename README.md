@@ -36,7 +36,7 @@ python3 cli.py decisions
 ## What It Produces
 
 - **Sessions** — unified conversation history from all tools
-- **Entities** — extracted concepts (Stella, Triad, Redis, etc.)
+- **Entities** — extracted concepts (e.g. Redis, FastAPI, your project names, etc.)
 - **Decisions** — architectural choices with context
 - **Patterns** — fixes, refactors, conventions discovered
 - **File Activity** — what was touched when

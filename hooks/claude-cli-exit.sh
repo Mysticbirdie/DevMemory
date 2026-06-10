@@ -15,17 +15,14 @@
 # Configuration
 DEV_MEMORY_DIR="${HOME}/.dev-memory"
 CLAUDE_LOGS_DIR="${HOME}/.claude"
-# Auto-detect dev-memory location: use DEV_MEMORY_REPO if set, else search common locations
+# Locate dev-memory: prefer $DEV_MEMORY_REPO, else a ./dev-memory in the cwd,
+# else fall back to a pip-installed `dev-memory` on PATH. Set DEV_MEMORY_REPO in
+# your own shell/project config to point at your checkout.
 if [ -z "$DEV_MEMORY_REPO" ]; then
-    # Try to find dev-memory in common locations
-    if [ -d "${HOME}/CascadeProjects/Birdhouse/dev-memory" ]; then
-        DEV_MEMORY_REPO="${HOME}/CascadeProjects/Birdhouse/dev-memory"
-    elif [ -d "${HOME}/projects/birdhouse/dev-memory" ]; then
-        DEV_MEMORY_REPO="${HOME}/projects/birdhouse/dev-memory"
-    elif [ -d "./dev-memory" ]; then
+    if [ -d "./dev-memory" ]; then
         DEV_MEMORY_REPO="$(pwd)/dev-memory"
     else
-        DEV_MEMORY_REPO=""  # Will fallback to pip install or PATH
+        DEV_MEMORY_REPO=""  # fall back to pip-installed / PATH `dev-memory`
     fi
 fi
 
