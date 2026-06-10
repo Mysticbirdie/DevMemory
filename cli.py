@@ -15,7 +15,8 @@ from memory.db import (
 )
 from memory.extractors import (
     DevinLocalExtractor, CursorExtractor, VSCodeCopilotExtractor,
-    AiderExtractor, ClaudeCLIExtractor, GitExtractor
+    AiderExtractor, ClaudeCLIExtractor, ClaudeProjectsExtractor,
+    ClaudeArtifactsExtractor, ClaudeCanvasExtractor, GitExtractor
 )
 from memory.intelligence import EntityExtractor, SessionSummarizer
 
@@ -75,68 +76,77 @@ def cmd_extract(args):
     total_sessions = 0
 
     if args.devin_local or args.all:
-        print("Extracting from Devin Local...")
+        print("Extracting from Devin Local..." if not args.dry_run else "Dry run: Devin Local...")
         devin = DevinLocalExtractor()
         if devin.is_available():
-            sessions = devin.extract(limit=args.limit)
-            total_sessions += _ingest_sessions(conn, sessions, extractor, summarizer)
+            sessions = devin.extract(limit=args.limit, dry_run=args.dry_run)
+            if not args.dry_run:
+                total_sessions += _ingest_sessions(conn, sessions, extractor, summarizer)
             print(f"  📥 {len(sessions)} Devin Local sessions")
         else:
             print("  ⚠️ Devin Local data not found")
 
     if args.cursor or args.all:
-        print("Extracting from Cursor IDE...")
+        print("Extracting from Cursor IDE..." if not args.dry_run else "Dry run: Cursor IDE...")
         cursor = CursorExtractor()
         if cursor.is_available():
-            sessions = cursor.extract(limit=args.limit)
-            total_sessions += _ingest_sessions(conn, sessions, extractor, summarizer)
+            sessions = cursor.extract(limit=args.limit, dry_run=args.dry_run)
+            if not args.dry_run:
+                total_sessions += _ingest_sessions(conn, sessions, extractor, summarizer)
             print(f"  📥 {len(sessions)} Cursor sessions")
         else:
             print("  ⚠️ Cursor data not found")
 
     if args.vscode_copilot or args.all:
-        print("Extracting from VS Code + Copilot...")
+        print("Extracting from VS Code + Copilot..." if not args.dry_run else "Dry run: VS Code + Copilot...")
         copilot = VSCodeCopilotExtractor()
         if copilot.is_available():
-            sessions = copilot.extract(limit=args.limit)
-            total_sessions += _ingest_sessions(conn, sessions, extractor, summarizer)
+            sessions = copilot.extract(limit=args.limit, dry_run=args.dry_run)
+            if not args.dry_run:
+                total_sessions += _ingest_sessions(conn, sessions, extractor, summarizer)
             print(f"  📥 {len(sessions)} VS Code Copilot sessions")
         else:
             print("  ⚠️ VS Code Copilot data not found")
 
     if args.aider or args.all:
-        print("Extracting from Aider...")
+        print("Extracting from Aider..." if not args.dry_run else "Dry run: Aider...")
         aider = AiderExtractor()
         if aider.is_available():
-            sessions = aider.extract(limit=args.limit)
-            total_sessions += _ingest_sessions(conn, sessions, extractor, summarizer)
+            sessions = aider.extract(limit=args.limit, dry_run=args.dry_run)
+            if not args.dry_run:
+                total_sessions += _ingest_sessions(conn, sessions, extractor, summarizer)
             print(f"  📥 {len(sessions)} Aider sessions")
         else:
             print("  ⚠️ Aider data not found")
 
     if args.claude or args.all:
-        print("Extracting from Claude CLI...")
+        print("Extracting from Claude CLI..." if not args.dry_run else "Dry run: Claude CLI...")
         claude = ClaudeCLIExtractor()
         if claude.is_available():
-            sessions = claude.extract(limit=args.limit)
-            total_sessions += _ingest_sessions(conn, sessions, extractor, summarizer)
+            sessions = claude.extract(limit=args.limit, dry_run=args.dry_run)
+            if not args.dry_run:
+                total_sessions += _ingest_sessions(conn, sessions, extractor, summarizer)
             print(f"  📥 {len(sessions)} Claude CLI sessions")
         else:
             print("  ⚠️ Claude CLI data not found")
 
     if args.git or args.all:
-        print("Extracting from Git...")
+        print("Extracting from Git..." if not args.dry_run else "Dry run: Git...")
         git = GitExtractor()
         if git.is_available():
             since_str = f"{args.since} days ago" if args.since else "30 days ago"
-            sessions = git.extract(limit=args.limit, since=since_str)
-            total_sessions += _ingest_sessions(conn, sessions, extractor, summarizer)
+            sessions = git.extract(limit=args.limit, dry_run=args.dry_run, since=since_str)
+            if not args.dry_run:
+                total_sessions += _ingest_sessions(conn, sessions, extractor, summarizer)
             print(f"  📥 {len(sessions)} Git commits")
         else:
             print("  ⚠️ Git data not found")
 
     conn.close()
-    print(f"\n✅ Total sessions stored: {total_sessions}")
+    if args.dry_run:
+        print(f"\n🔍 Dry run complete — no data stored")
+    else:
+        print(f"\n✅ Total sessions stored: {total_sessions}")
 
 
 def cmd_search(args):
@@ -266,6 +276,94 @@ def cmd_stats(args):
     conn.close()
 
 
+def cmd_tools(args):
+    """List all available extractors and their status."""
+    extractors = [
+        DevinLocalExtractor(),
+        CursorExtractor(),
+        VSCodeCopilotExtractor(),
+        AiderExtractor(),
+        ClaudeCLIExtractor(),
+        ClaudeProjectsExtractor(),
+        ClaudeArtifactsExtractor(),
+        ClaudeCanvasExtractor(),
+        GitExtractor(),
+    ]
+    
+    print("\n🔧 Available Extractors\n")
+    
+    for ext in extractors:
+        stats = ext.get_stats()
+        available = stats.get("available", False)
+        status = "✅" if available else "❌"
+        print(f"  {status} {stats.get('display_name', 'Unknown'):<25} ({stats.get('tool', '?')})")
+        
+        if available:
+            # Show tool-specific stats
+            if "log_files" in stats:
+                print(f"     📄 {stats['log_files']} log files")
+            if "conversation_files" in stats:
+                print(f"     💬 {stats['conversation_files']} conversations")
+            if "memory_files" in stats:
+                print(f"     📝 {stats['memory_files']} memory files")
+            if "repo_count" in stats:
+                print(f"     📦 {stats['repo_count']} repositories")
+            if "export_files" in stats:
+                print(f"     📥 {stats['export_files']} web exports")
+            if "history_files" in stats:
+                print(f"     📜 {stats['history_files']} history files")
+            if "project_exports" in stats:
+                print(f"     🗂️  {stats['project_exports']} project exports")
+            if "total_artifacts" in stats:
+                print(f"     🎨 {stats['total_artifacts']} artifacts")
+            if "canvas_exports" in stats:
+                print(f"     🖼️  {stats['canvas_exports']} canvas exports")
+    
+    print("\n  Use 'extract --<tool>' to extract from a specific tool")
+    print("  Use 'verify' to test all extractors without extracting\n")
+
+
+def cmd_verify(args):
+    """Verify all extractors can read data without extracting."""
+    extractors = [
+        DevinLocalExtractor(),
+        CursorExtractor(),
+        VSCodeCopilotExtractor(),
+        AiderExtractor(),
+        ClaudeCLIExtractor(),
+        ClaudeProjectsExtractor(),
+        ClaudeArtifactsExtractor(),
+        ClaudeCanvasExtractor(),
+        GitExtractor(),
+    ]
+    
+    print("\n🔍 Verifying Extractors\n")
+    
+    all_ok = True
+    for ext in extractors:
+        stats = ext.get_stats()
+        available = stats.get("available", False)
+        name = stats.get("display_name", "Unknown")
+        
+        if available:
+            print(f"  ✅ {name:<25} — Data accessible")
+            # Try dry-run extraction
+            try:
+                preview = ext.extract(limit=1, dry_run=True)
+                if preview:
+                    print(f"     └─ {preview[0].get('summary', 'Ready')}")
+            except Exception as e:
+                print(f"     ⚠️  Dry run failed: {e}")
+                all_ok = False
+        else:
+            print(f"  ❌ {name:<25} — No data found")
+    
+    if all_ok:
+        print("\n  ✅ All available extractors verified successfully\n")
+    else:
+        print("\n  ⚠️  Some extractors need attention\n")
+
+
 def cmd_related(args):
     """Show entities related to a given entity."""
     conn = init_db()
@@ -367,6 +465,62 @@ def cmd_import_web(args):
     print(f"\n✅ Total imported: {total_imported}")
 
 
+def _import_sessions(extractor, label: str, args):
+    """Generic session importer for Claude web features."""
+    conn = init_db()
+    from memory.db import insert_session, insert_entity, insert_decision
+    from memory.intelligence import EntityExtractor, SessionSummarizer
+    
+    intel_extractor = EntityExtractor()
+    summarizer = SessionSummarizer()
+    
+    sessions = extractor.extract()
+    total_imported = 0
+    
+    print(f"\n📥 Importing {len(sessions)} {label} session(s)...\n")
+    
+    for session in sessions:
+        intel = intel_extractor.extract_from_session(session)
+        session["tags"] = intel["tags"]
+        session["summary"] = summarizer.summarize(session)
+        
+        session_id = insert_session(conn, session)
+        total_imported += 1
+        
+        for entity in intel["entities"]:
+            insert_entity(conn, entity["name"], entity["type"], entity["context"])
+        
+        for decision in intel["decisions"]:
+            decision["session_id"] = session_id
+            insert_decision(conn, decision)
+        
+        print(f"  ✅ {session.get('summary', 'Untitled')[:60]}...")
+    
+    conn.close()
+    print(f"\n✅ Total {label} imported: {total_imported}")
+
+
+def cmd_import_claude_projects(args):
+    """Import Claude Project exports."""
+    import_dir = Path(args.dir) if args.dir else None
+    extractor = ClaudeProjectsExtractor(import_dir)
+    _import_sessions(extractor, "Claude Projects", args)
+
+
+def cmd_import_claude_artifacts(args):
+    """Import Claude Artifact exports."""
+    import_dir = Path(args.dir) if args.dir else None
+    extractor = ClaudeArtifactsExtractor(import_dir)
+    _import_sessions(extractor, "Claude Artifacts", args)
+
+
+def cmd_import_claude_canvas(args):
+    """Import Claude Canvas exports."""
+    import_dir = Path(args.dir) if args.dir else None
+    extractor = ClaudeCanvasExtractor(import_dir)
+    _import_sessions(extractor, "Claude Canvas", args)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Cross-Tool Memory - Universal memory for AI coding tools (Devin, Cursor, VS Code, Aider, Claude CLI, Git)"
@@ -388,6 +542,7 @@ def main():
     extract_parser.add_argument("--git", action="store_true", help="Extract from Git")
     extract_parser.add_argument("--limit", type=int, default=100, help="Max sessions to extract")
     extract_parser.add_argument("--since", type=int, default=30, help="Git: days ago to start from")
+    extract_parser.add_argument("--dry-run", action="store_true", help="Preview what would be extracted without storing")
     extract_parser.set_defaults(func=cmd_extract)
     
     # search
@@ -414,8 +569,17 @@ def main():
     decisions_parser.add_argument("--limit", type=int, default=20, help="Max results")
     decisions_parser.set_defaults(func=cmd_decisions)
     
+    # tools
+    tools_parser = subparsers.add_parser("tools", help="List available extractors and their status")
+    tools_parser.set_defaults(func=cmd_tools)
+    
+    # verify
+    verify_parser = subparsers.add_parser("verify", help="Verify all extractors can read data")
+    verify_parser.set_defaults(func=cmd_verify)
+    
     # stats
     stats_parser = subparsers.add_parser("stats", help="Show database statistics")
+    stats_parser.add_argument("--tool", choices=["devin_local", "cursor", "vscode_copilot", "aider", "claude_cli", "git"], help="Filter by tool")
     stats_parser.set_defaults(func=cmd_stats)
     
     # sync
@@ -435,6 +599,24 @@ def main():
     import_web_parser.add_argument("--file", help="Specific export file to import")
     import_web_parser.add_argument("--all", action="store_true", help="Import all found exports")
     import_web_parser.set_defaults(func=cmd_import_web)
+    
+    # import-claude-projects
+    import_projects_parser = subparsers.add_parser("import-claude-projects", help="Import Claude Project exports")
+    import_projects_parser.add_argument("--dir", help="Directory containing project exports")
+    import_projects_parser.add_argument("--all", action="store_true", help="Import all found projects")
+    import_projects_parser.set_defaults(func=cmd_import_claude_projects)
+    
+    # import-claude-artifacts
+    import_artifacts_parser = subparsers.add_parser("import-claude-artifacts", help="Import Claude Artifact exports")
+    import_artifacts_parser.add_argument("--dir", help="Directory containing artifact exports")
+    import_artifacts_parser.add_argument("--all", action="store_true", help="Import all found artifacts")
+    import_artifacts_parser.set_defaults(func=cmd_import_claude_artifacts)
+    
+    # import-claude-canvas
+    import_canvas_parser = subparsers.add_parser("import-claude-canvas", help="Import Claude Canvas exports")
+    import_canvas_parser.add_argument("--dir", help="Directory containing canvas exports")
+    import_canvas_parser.add_argument("--all", action="store_true", help="Import all found canvas exports")
+    import_canvas_parser.set_defaults(func=cmd_import_claude_canvas)
     
     args = parser.parse_args()
     

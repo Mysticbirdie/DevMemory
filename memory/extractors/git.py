@@ -4,14 +4,19 @@ Reads commit history, file changes, and diffs from Git repositories.
 """
 
 import subprocess
+import json
 import re
 from pathlib import Path
 from typing import List, Dict, Optional
 from datetime import datetime
+from .base import BaseExtractor
 
 
-class GitExtractor:
+class GitExtractor(BaseExtractor):
     """Extracts activity from Git repositories."""
+    
+    TOOL_NAME = "git"
+    DISPLAY_NAME = "Git"
     
     def __init__(self, repo_paths: Optional[List[Path]] = None):
         """Initialize with repo paths. Defaults to current directory."""
@@ -26,9 +31,46 @@ class GitExtractor:
         except (subprocess.CalledProcessError, FileNotFoundError):
             return False
     
-    def extract(self, limit: Optional[int] = None, since: Optional[str] = None) -> List[Dict]:
+    def get_stats(self) -> Dict:
+        """Return statistics about available Git data."""
+        stats = super().get_stats()
+        
+        repo_stats = []
+        for repo in self.repo_paths:
+            if not (repo / ".git").exists():
+                continue
+            
+            try:
+                # Count commits in last 30 days
+                result = subprocess.run(
+                    ["git", "-C", str(repo), "rev-list", "--count", "--since=30 days ago", "HEAD"],
+                    capture_output=True, text=True, check=True
+                )
+                commit_count = int(result.stdout.strip())
+                
+                # Get repo name
+                repo_name = repo.name
+                
+                repo_stats.append({
+                    "name": repo_name,
+                    "path": str(repo),
+                    "recent_commits": commit_count
+                })
+            except (subprocess.CalledProcessError, ValueError):
+                continue
+        
+        stats["repos"] = repo_stats
+        stats["repo_count"] = len(repo_stats)
+        return stats
+    
+    def extract(self, limit: Optional[int] = None, dry_run: bool = False, since: Optional[str] = None) -> List[Dict]:
         """Extract commits as sessions.
         
+        Args:
+            limit: Max sessions to extract
+            dry_run: If True, return preview stats without full session data
+            since: Git --since parameter (e.g. "30 days ago")
+            
         Returns list of session dicts with format:
         {
             "tool": "git",
@@ -47,14 +89,32 @@ class GitExtractor:
             ]
         }
         """
+        if dry_run:
+            stats = self.get_stats()
+            total_commits = sum(r.get("recent_commits", 0) for r in stats.get("repos", []))
+            return [{
+                "tool": self.TOOL_NAME,
+                "session_id": f"{self.TOOL_NAME}_dry_run",
+                "started_at": datetime.now().isoformat(),
+                "ended_at": datetime.now().isoformat(),
+                "summary": f"Dry run: {total_commits} recent commits across {stats.get('repo_count', 0)} repos",
+                "tags": ["dry-run"],
+                "raw_content": json.dumps(stats),
+                "turns": []
+            }]
+        
         sessions = []
         
         for repo in self.repo_paths:
             if not (repo / ".git").exists():
                 continue
             
-            sessions.extend(self._extract_from_repo(repo, limit, since))
+            try:
+                sessions.extend(self._extract_from_repo(repo, limit, since))
+            except Exception as e:
+                print(f"  Warning: Could not extract from {repo}: {e}")
         
+        # Validate and filter (Git commits are single-turn, so skip validation)
         return sessions[:limit] if limit else sessions
     
     def _extract_from_repo(self, repo: Path, limit: Optional[int], since: Optional[str]) -> List[Dict]:

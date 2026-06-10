@@ -8,10 +8,14 @@ import re
 from pathlib import Path
 from typing import List, Dict, Optional
 from datetime import datetime
+from .base import BaseExtractor
 
 
-class ClaudeCLIExtractor:
+class ClaudeCLIExtractor(BaseExtractor):
     """Extracts conversation history from Claude CLI."""
+    
+    TOOL_NAME = "claude_cli"
+    DISPLAY_NAME = "Claude CLI"
     
     # Claude Code stores data here
     CLAUDE_DIR = Path.home() / ".claude"
@@ -25,9 +29,34 @@ class ClaudeCLIExtractor:
         """Check if Claude CLI data is accessible."""
         return self.claude_dir.exists()
     
-    def extract(self, limit: Optional[int] = None) -> List[Dict]:
+    def get_stats(self) -> Dict:
+        """Return statistics about available Claude CLI data."""
+        stats = super().get_stats()
+        
+        # Count conversation files
+        conv_count = 0
+        conv_dir = self.claude_dir / "conversations"
+        if conv_dir.exists():
+            conv_count = len(list(conv_dir.glob("*.json")))
+        
+        # Count memory files
+        memory_count = 0
+        memory_dir = self.claude_dir / "memory"
+        if memory_dir.exists():
+            memory_count = len(list(memory_dir.glob("*.md")))
+        
+        stats["conversation_files"] = conv_count
+        stats["memory_files"] = memory_count
+        stats["cache_exists"] = self.CLAUDE_CACHE.exists()
+        return stats
+    
+    def extract(self, limit: Optional[int] = None, dry_run: bool = False) -> List[Dict]:
         """Extract sessions from Claude CLI data sources.
         
+        Args:
+            limit: Max sessions to extract
+            dry_run: If True, return preview stats without full session data
+            
         Returns list of session dicts with format:
         {
             "tool": "claude_cli",
@@ -47,17 +76,37 @@ class ClaudeCLIExtractor:
             ]
         }
         """
+        if dry_run:
+            stats = self.get_stats()
+            return [{
+                "tool": self.TOOL_NAME,
+                "session_id": f"{self.TOOL_NAME}_dry_run",
+                "started_at": datetime.now().isoformat(),
+                "ended_at": datetime.now().isoformat(),
+                "summary": f"Dry run: {stats.get('conversation_files', 0)} conversations, {stats.get('memory_files', 0)} memory files",
+                "tags": ["dry-run"],
+                "raw_content": json.dumps(stats),
+                "turns": []
+            }]
+        
         sessions = []
         
         # Try to find conversation files
         if self.claude_dir.exists():
-            # Look for conversation history files
-            sessions.extend(self._extract_from_conversations(limit))
+            try:
+                # Look for conversation history files
+                sessions.extend(self._extract_from_conversations(limit))
+            except Exception as e:
+                print(f"  Warning: Could not read Claude conversations: {e}")
             
-            # Look for project memory files
-            sessions.extend(self._extract_from_project_memory(limit))
+            try:
+                # Look for project memory files
+                sessions.extend(self._extract_from_project_memory(limit))
+            except Exception as e:
+                print(f"  Warning: Could not read Claude memory files: {e}")
         
-        return sessions[:limit] if limit else sessions
+        # Validate and filter
+        return self.filter_valid_sessions(sessions[:limit] if limit else sessions)
     
     def _extract_from_conversations(self, limit: Optional[int] = None) -> List[Dict]:
         """Extract from Claude's conversation storage."""

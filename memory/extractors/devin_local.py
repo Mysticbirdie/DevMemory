@@ -7,13 +7,19 @@ import sqlite3
 import json
 import re
 import os
+import tempfile
+import shutil
 from pathlib import Path
 from typing import List, Dict, Optional
 from datetime import datetime
+from .base import BaseExtractor
 
 
-class DevinLocalExtractor:
+class DevinLocalExtractor(BaseExtractor):
     """Extracts conversation history from Devin Local."""
+    
+    TOOL_NAME = "devin_local"
+    DISPLAY_NAME = "Devin Local"
     
     # Primary database location
     DIPS_DB = Path.home() / "Library" / "Application Support" / "Windsurf" / "DIPS"
@@ -21,17 +27,44 @@ class DevinLocalExtractor:
     # Cached data directory
     CACHED_DATA = Path.home() / "Library" / "Application Support" / "Windsurf" / "CachedData"
     
+    # Claude logs directory (contains actual conversations)
+    LOGS_DIR = Path.home() / "Library" / "Application Support" / "Windsurf" / "logs"
+    
     def __init__(self, db_path: Optional[Path] = None):
         self.db_path = db_path or self.DIPS_DB
         self.sessions: List[Dict] = []
     
     def is_available(self) -> bool:
         """Check if Devin Local data is accessible."""
-        return self.db_path.exists()
+        return self.db_path.exists() or self.CACHED_DATA.exists() or self.LOGS_DIR.exists()
     
-    def extract(self, limit: Optional[int] = None) -> List[Dict]:
+    def get_stats(self) -> Dict:
+        """Return statistics about available Devin Local data."""
+        stats = super().get_stats()
+        
+        # Count log files
+        log_count = 0
+        if self.LOGS_DIR.exists():
+            for date_dir in self.LOGS_DIR.iterdir():
+                if date_dir.is_dir():
+                    for window_dir in date_dir.iterdir():
+                        if window_dir.is_dir():
+                            claude_log = window_dir / "exthost" / "Anthropic.claude-code" / "Claude VSCode.log"
+                            if claude_log.exists():
+                                log_count += 1
+        
+        stats["log_files"] = log_count
+        stats["dips_db_exists"] = self.db_path.exists()
+        stats["cached_data_exists"] = self.CACHED_DATA.exists()
+        return stats
+    
+    def extract(self, limit: Optional[int] = None, dry_run: bool = False) -> List[Dict]:
         """Extract sessions from Devin Local data sources.
         
+        Args:
+            limit: Max sessions to extract
+            dry_run: If True, return preview stats without full session data
+            
         Returns list of session dicts with format:
         {
             "tool": "devin_local",
@@ -51,6 +84,19 @@ class DevinLocalExtractor:
             ]
         }
         """
+        if dry_run:
+            stats = self.get_stats()
+            return [{
+                "tool": self.TOOL_NAME,
+                "session_id": f"{self.TOOL_NAME}_dry_run",
+                "started_at": datetime.now().isoformat(),
+                "ended_at": datetime.now().isoformat(),
+                "summary": f"Dry run: {stats.get('log_files', 0)} log files available",
+                "tags": ["dry-run"],
+                "raw_content": json.dumps(stats),
+                "turns": []
+            }]
+        
         sessions = []
         
         # Try SQLite database first
@@ -58,22 +104,23 @@ class DevinLocalExtractor:
             try:
                 sessions.extend(self._extract_from_dips(limit))
             except Exception as e:
-                print(f"Warning: Could not read DIPS database: {e}")
+                print(f"  Warning: Could not read DIPS database: {e}")
         
         # Fall back to cached data files
         if not sessions and self.CACHED_DATA.exists():
             try:
                 sessions.extend(self._extract_from_cache(limit))
             except Exception as e:
-                print(f"Warning: Could not read cached data: {e}")
+                print(f"  Warning: Could not read cached data: {e}")
         
         # Extract from Claude VSCode.log files (primary source for conversations)
         try:
             sessions.extend(self._extract_from_claude_logs(limit))
         except Exception as e:
-            print(f"Warning: Could not read Claude logs: {e}")
+            print(f"  Warning: Could not read Claude logs: {e}")
         
-        return sessions
+        # Validate and filter sessions
+        return self.filter_valid_sessions(sessions)
     
     def _extract_from_dips(self, limit: Optional[int] = None) -> List[Dict]:
         """Extract from Devin Local's DIPS SQLite database.

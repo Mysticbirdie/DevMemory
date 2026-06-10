@@ -9,10 +9,14 @@ import re
 from pathlib import Path
 from typing import List, Dict, Optional
 from datetime import datetime
+from .base import BaseExtractor
 
 
-class ClaudeWebExtractor:
+class ClaudeWebExtractor(BaseExtractor):
     """Extracts conversation history from Claude Web exports."""
+    
+    TOOL_NAME = "claude_web"
+    DISPLAY_NAME = "Claude Web"
     
     def __init__(self, export_dir: Optional[Path] = None):
         """Initialize with directory to watch for exports.
@@ -21,6 +25,20 @@ class ClaudeWebExtractor:
         """
         self.export_dir = export_dir or (Path.home() / "Downloads")
         self.sessions: List[Dict] = []
+    
+    def is_available(self) -> bool:
+        """Check if Claude Web exports are available."""
+        return len(self.find_exports()) > 0
+    
+    def get_stats(self) -> Dict:
+        """Return statistics about available Claude Web exports."""
+        stats = super().get_stats()
+        exports = self.find_exports()
+        stats["export_files"] = len(exports)
+        stats["export_dir"] = str(self.export_dir)
+        if exports:
+            stats["latest_export"] = exports[0].name
+        return stats
     
     def find_exports(self) -> List[Path]:
         """Find Claude Web export files in the export directory.
@@ -33,15 +51,30 @@ class ClaudeWebExtractor:
         pattern = "Claude Chat - *.json"
         return sorted(self.export_dir.glob(pattern), key=lambda p: p.stat().st_mtime, reverse=True)
     
-    def extract(self, limit: Optional[int] = None, specific_file: Optional[Path] = None) -> List[Dict]:
+    def extract(self, limit: Optional[int] = None, dry_run: bool = False, specific_file: Optional[Path] = None) -> List[Dict]:
         """Extract sessions from Claude Web export files.
         
         Args:
             limit: Max number of export files to process
+            dry_run: If True, return preview stats without full session data
+            specific_file: Process a specific export file
             specific_file: Process only this specific file (optional)
         
         Returns list of session dicts.
         """
+        if dry_run:
+            stats = self.get_stats()
+            return [{
+                "tool": self.TOOL_NAME,
+                "session_id": f"{self.TOOL_NAME}_dry_run",
+                "started_at": datetime.now().isoformat(),
+                "ended_at": datetime.now().isoformat(),
+                "summary": f"Dry run: {stats.get('export_files', 0)} export files available",
+                "tags": ["dry-run"],
+                "raw_content": json.dumps(stats),
+                "turns": []
+            }]
+        
         sessions = []
         
         if specific_file:
@@ -57,9 +90,10 @@ class ClaudeWebExtractor:
                 if session:
                     sessions.append(session)
             except Exception as e:
-                print(f"Warning: Could not parse {export_file}: {e}")
+                print(f"  Warning: Could not parse {export_file}: {e}")
         
-        return sessions
+        # Validate and filter
+        return self.filter_valid_sessions(sessions)
     
     def _parse_export(self, export_file: Path) -> Optional[Dict]:
         """Parse a Claude Web export JSON file."""

@@ -43,8 +43,35 @@ class AiderExtractor(BaseExtractor):
         
         return False
     
-    def extract(self, limit: Optional[int] = None) -> List[Dict]:
+    def get_stats(self) -> Dict:
+        """Return statistics about available Aider data."""
+        stats = super().get_stats()
+        aider_dir = self._find_aider_dir()
+        if aider_dir:
+            stats["history_dir"] = str(aider_dir)
+            # Count history files
+            file_count = len(list(aider_dir.glob("**/*")))
+            stats["history_files"] = file_count
+        else:
+            stats["history_dir"] = None
+            stats["history_files"] = 0
+        return stats
+    
+    def extract(self, limit: Optional[int] = None, dry_run: bool = False) -> List[Dict]:
         """Extract sessions from Aider history."""
+        if dry_run:
+            stats = self.get_stats()
+            return [{
+                "tool": self.TOOL_NAME,
+                "session_id": f"{self.TOOL_NAME}_dry_run",
+                "started_at": datetime.now().isoformat(),
+                "ended_at": datetime.now().isoformat(),
+                "summary": f"Dry run: {stats.get('history_files', 0)} history files available",
+                "tags": ["dry-run"],
+                "raw_content": json.dumps(stats),
+                "turns": []
+            }]
+        
         sessions = []
         
         # Find Aider directory
@@ -90,7 +117,7 @@ class AiderExtractor(BaseExtractor):
                 except Exception:
                     continue
         
-        return sessions[:limit] if limit else sessions
+        return self.filter_valid_sessions(sessions[:limit] if limit else sessions)
     
     def _find_aider_dir(self) -> Optional[Path]:
         """Find the Aider data directory."""

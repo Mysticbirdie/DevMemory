@@ -6,7 +6,8 @@ Supported tools:
 - VS Code + GitHub Copilot Chat
 - Aider (CLI pair programming)
 - Claude CLI
-- Claude Web (claude.ai exports)
+- Claude Web (claude.ai chat exports)
+- Claude Projects, Artifacts, Canvas (claude.ai design exports)
 - Git
 """
 
@@ -17,6 +18,7 @@ from .vscode_copilot import VSCodeCopilotExtractor
 from .aider import AiderExtractor
 from .claude_cli import ClaudeCLIExtractor
 from .claude_web import ClaudeWebExtractor
+from .claude_projects import ClaudeProjectsExtractor, ClaudeArtifactsExtractor, ClaudeCanvasExtractor
 from .git import GitExtractor
 
 __all__ = [
@@ -27,5 +29,8 @@ __all__ = [
     "AiderExtractor",
     "ClaudeCLIExtractor",
     "ClaudeWebExtractor",
+    "ClaudeProjectsExtractor",
+    "ClaudeArtifactsExtractor",
+    "ClaudeCanvasExtractor",
     "GitExtractor",
 ]

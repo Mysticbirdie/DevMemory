@@ -37,8 +37,28 @@ class CursorExtractor(BaseExtractor):
         """Check if Cursor data is accessible."""
         return self.data_dir and self.data_dir.exists()
     
-    def extract(self, limit: Optional[int] = None) -> List[Dict]:
+    def get_stats(self) -> Dict:
+        """Return statistics about available Cursor data."""
+        stats = super().get_stats()
+        stats["data_dir"] = str(self.data_dir) if self.data_dir else None
+        stats["platform"] = self.platform
+        return stats
+    
+    def extract(self, limit: Optional[int] = None, dry_run: bool = False) -> List[Dict]:
         """Extract sessions from Cursor data sources."""
+        if dry_run:
+            stats = self.get_stats()
+            return [{
+                "tool": self.TOOL_NAME,
+                "session_id": f"{self.TOOL_NAME}_dry_run",
+                "started_at": datetime.now().isoformat(),
+                "ended_at": datetime.now().isoformat(),
+                "summary": f"Dry run: Cursor data dir exists at {stats.get('data_dir', 'unknown')}",
+                "tags": ["dry-run"],
+                "raw_content": json.dumps(stats),
+                "turns": []
+            }]
+        
         sessions = []
         
         # Try multiple data sources
@@ -52,7 +72,7 @@ class CursorExtractor(BaseExtractor):
         except Exception as e:
             print(f"  Warning: Could not read Cursor JSON logs: {e}")
         
-        return sessions[:limit] if limit else sessions
+        return self.filter_valid_sessions(sessions[:limit] if limit else sessions)
     
     def _extract_from_sqlite(self, limit: Optional[int] = None) -> List[Dict]:
         """Extract from Cursor's SQLite database (if present).
