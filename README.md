@@ -1,6 +1,8 @@
-# Cross-Tool Memory System — Devin Local, Claude CLI, Claude Web & Git
+# DevMemory — Universal Memory for AI Coding Tools
 
-Universal memory layer that sees everything you do across Devin Local, Claude CLI, Claude Web, and Git.
+Cross-Tool Memory System. Extracts and unifies your AI coding conversations from **any IDE or CLI** into a searchable, persistent memory layer.
+
+**Works with**: Devin, Cursor, VS Code + Copilot, Aider, Claude CLI, Claude Web, Git
 
 ## Quick Start
 
@@ -27,12 +29,15 @@ python3 cli.py decisions
 
 ## What It Captures
 
-| Source | What | How |
-|--------|------|-----|
-| **Devin Local** | Chat history, tool calls, file edits | Reads internal SQLite DB |
-| **Claude CLI** | Conversations, project memory | Reads `~/.claude/` files |
-| **Claude Web** | Exported chat JSON from claude.ai | Parses export files |
-| **Git** | Commits, file changes, diffs | `git log` with stats |
+| Source | What | How | Status |
+|--------|------|-----|--------|
+| **Devin** | Chat history, tool calls, file edits | VS Code extension SQLite DB | ✅ Ready |
+| **Cursor** | AI chat, composer sessions | VS Code fork data files | ✅ Ready |
+| **VS Code + Copilot** | GitHub Copilot Chat | Extension globalStorage | ✅ Ready |
+| **Aider** | Pair programming sessions | CLI history files (`~/.aider/`) | ✅ Ready |
+| **Claude CLI** | Conversations, project memory | Reads `~/.claude/` files | ✅ Ready |
+| **Claude Web** | Exported chat JSON from claude.ai | Parses export files | ✅ Ready |
+| **Git** | Commits, file changes, diffs | `git log` with stats | ✅ Ready |
 
 ## What It Produces
 
@@ -46,12 +51,13 @@ python3 cli.py decisions
 ## Architecture
 
 ```
-┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐
-│ Devin Local │ │ Claude CLI  │ │ Claude Web│ │     Git     │
-└──────┬──────┘ └──────┬──────┘ └──────┬──────┘ └──────┬──────┘
-       │               │               │               │
-       └───────────────┼───────────────┼───────────────┘
-                       │               │
+┌────────┐ ┌────────┐ ┌──────────┐ ┌────────┐ ┌──────────┐ ┌────────┐
+│ Devin  │ │ Cursor │ │ VS Code  │ │ Aider  │ │ Claude   │ │  Git   │
+│        │ │        │ │ Copilot  │ │        │ │ CLI/Web  │ │        │
+└───┬────┘ └───┬────┘ └────┬─────┘ └───┬────┘ └────┬─────┘ └───┬────┘
+    │          │           │           │           │           │
+    └──────────┼───────────┼───────────┼───────────┼───────────┘
+               │           │           │
               ┌────────┴────────┐
               │   EXTRACTORS      │
               └────────┬────────┘
@@ -91,19 +97,25 @@ SQLite database at `~/.dev-memory/memory.db`:
 | Command | Description |
 |---------|-------------|
 | `init` | Create database |
-| `extract --all` | Pull from all tools |
-| `search <query>` | Full-text search |
+| `extract --all` | Pull from **all** IDEs and tools |
+| `extract --devin-local` | Extract from Devin |
+| `extract --cursor` | Extract from Cursor IDE |
+| `extract --vscode-copilot` | Extract from VS Code + Copilot |
+| `extract --aider` | Extract from Aider CLI |
+| `extract --claude` | Extract from Claude CLI |
+| `extract --git` | Extract from Git |
+| `search <query>` | Full-text search across all tools |
 | `recent --days N` | Recent sessions |
-| `entities` | Show concepts |
+| `entities` | Show extracted concepts |
 | `decisions` | Show active decisions |
-| `stats` | Database stats |
-| `related <entity>` | Entity graph |
-| `sync [--dry-run]` | Sync to Devin Local Memory Banks |
+| `stats` | Database statistics |
+| `related <entity>` | Entity relationship graph |
+| `sync [--dry-run]` | Sync to Memory Banks |
 | `import-web [--file]` | Import Claude Web exports |
 
 ## Claude Web Integration
 
-Bridge your Claude.ai web sessions into DevMemory. Web LLM → CLI → Devin Local:
+Bridge your Claude.ai web sessions into DevMemory. Works with any IDE:
 
 ```bash
 # Export a chat from claude.ai (3-dot menu → Export chat)
@@ -119,16 +131,16 @@ python3 cli.py import-web --all
 - Entities extracted from the discussion
 - Decisions made during the session
 - Patterns discovered
-- Cross-links with CLI/Devin Local sessions
+- Cross-links with all IDE sessions
 
-After import, sync to Devin Local memory banks:
+After import, sync to your IDE's memory banks:
 ```bash
 python3 cli.py sync
 ```
 
-## Devin Local Memory Bank Bridge
+## Memory Bank Bridge
 
-Auto-populate your memory banks from DevMemory:
+Auto-populate your IDE's memory banks from DevMemory (works with any IDE that uses `.claude/memory/` or `.cascade/memory/`):
 
 ```bash
 # Sync decisions to .cascade/memory/decisions.md
@@ -164,6 +176,56 @@ claude-extract        # Full extract + sync
 claude-quick-extract  # Fast single-session
 ```
 
+## Adding New IDE Support
+
+DevMemory is designed to be extensible. Adding a new IDE takes ~30 minutes:
+
+### 1. Create an Extractor
+
+```python
+# memory/extractors/my_ide.py
+from .base import BaseExtractor
+
+class MyIDEExtractor(BaseExtractor):
+    TOOL_NAME = "my_ide"
+    DISPLAY_NAME = "My IDE"
+    
+    def is_available(self) -> bool:
+        # Check if IDE data exists
+        return Path.home().exists()
+    
+    def extract(self, limit=None):
+        # Return list of session dicts
+        sessions = []
+        # ... your extraction logic ...
+        return sessions
+```
+
+### 2. Register in `__init__.py`
+
+```python
+from .my_ide import MyIDEExtractor
+__all__ = [..., "MyIDEExtractor"]
+```
+
+### 3. Add CLI Flag
+
+```python
+extract_parser.add_argument("--my-ide", action="store_true", help="Extract from My IDE")
+```
+
+### 4. Add to `cmd_extract()`
+
+```python
+if args.my_ide or args.all:
+    my_ide = MyIDEExtractor()
+    if my_ide.is_available():
+        sessions = my_ide.extract(limit=args.limit)
+        total_sessions += _ingest_sessions(conn, sessions, extractor, summarizer)
+```
+
+That's it! The new IDE is now fully integrated with search, sync, and memory banks.
+
 ## Devin Local Integration
 
 The `.claude/agents/memory-bridge.md` agent queries memory automatically:
@@ -189,10 +251,15 @@ This is a lightweight alternative that works across tools.
 
 ## Future Work
 
+- [ ] **Zed IDE support** — Native AI chat integration
+- [ ] **JetBrains IDEs** — IntelliJ, PyCharm, WebStorm AI assistants
+- [ ] **Codeium support** — Free AI autocomplete and chat
+- [ ] **Supermaven support** — AI code completion history
+- [ ] **Continue.dev support** — Open-source AI assistant
 - [ ] Real embedding model (sentence-transformers)
 - [ ] Consolidation pipeline
 - [ ] MCP server for Claude CLI
-- [ ] Automatic Devin Local context injection
+- [ ] Automatic context injection for any IDE
 - [ ] Web UI for browsing memory
 - [ ] Cross-project entity linking
 

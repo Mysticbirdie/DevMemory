@@ -13,7 +13,10 @@ from memory.db import (
     insert_entity, insert_decision, insert_pattern,
     insert_file_activity, insert_entity_links,
 )
-from memory.extractors import DevinLocalExtractor, ClaudeCLIExtractor, GitExtractor
+from memory.extractors import (
+    DevinLocalExtractor, CursorExtractor, VSCodeCopilotExtractor,
+    AiderExtractor, ClaudeCLIExtractor, GitExtractor
+)
 from memory.intelligence import EntityExtractor, SessionSummarizer
 
 
@@ -81,6 +84,36 @@ def cmd_extract(args):
         else:
             print("  ⚠️ Devin Local data not found")
 
+    if args.cursor or args.all:
+        print("Extracting from Cursor IDE...")
+        cursor = CursorExtractor()
+        if cursor.is_available():
+            sessions = cursor.extract(limit=args.limit)
+            total_sessions += _ingest_sessions(conn, sessions, extractor, summarizer)
+            print(f"  📥 {len(sessions)} Cursor sessions")
+        else:
+            print("  ⚠️ Cursor data not found")
+
+    if args.vscode_copilot or args.all:
+        print("Extracting from VS Code + Copilot...")
+        copilot = VSCodeCopilotExtractor()
+        if copilot.is_available():
+            sessions = copilot.extract(limit=args.limit)
+            total_sessions += _ingest_sessions(conn, sessions, extractor, summarizer)
+            print(f"  📥 {len(sessions)} VS Code Copilot sessions")
+        else:
+            print("  ⚠️ VS Code Copilot data not found")
+
+    if args.aider or args.all:
+        print("Extracting from Aider...")
+        aider = AiderExtractor()
+        if aider.is_available():
+            sessions = aider.extract(limit=args.limit)
+            total_sessions += _ingest_sessions(conn, sessions, extractor, summarizer)
+            print(f"  📥 {len(sessions)} Aider sessions")
+        else:
+            print("  ⚠️ Aider data not found")
+
     if args.claude or args.all:
         print("Extracting from Claude CLI...")
         claude = ClaudeCLIExtractor()
@@ -119,7 +152,7 @@ def cmd_search(args):
     print(f"\n🔍 Found {len(results)} results for: '{args.query}'\n")
     
     for r in results:
-        tool_emoji = {"devin_local": "⚡", "claude_cli": "🧠", "git": "📦"}.get(r.get("tool"), "📝")
+        tool_emoji = {"devin_local": "⚡", "cursor": "🖱️", "vscode_copilot": "🤖", "aider": "🤝", "claude_cli": "🧠", "git": "📦"}.get(r.get("tool"), "📝")
         date = r.get("started_at", "unknown")[:10] if r.get("started_at") else "unknown"
         summary = r.get("summary", "No summary")[:80]
         
@@ -143,7 +176,7 @@ def cmd_recent(args):
     print(f"\n📅 Last {args.days} days ({len(sessions)} sessions)\n")
     
     for s in sessions:
-        tool_emoji = {"devin_local": "⚡", "claude_cli": "🧠", "git": "📦"}.get(s.get("tool"), "📝")
+        tool_emoji = {"devin_local": "⚡", "cursor": "🖱️", "vscode_copilot": "🤖", "aider": "🤝", "claude_cli": "🧠", "git": "📦"}.get(s.get("tool"), "📝")
         date = s.get("started_at", "")[:16] if s.get("started_at") else "unknown"
         summary = s.get("summary", "No summary")[:60]
         tags = s.get("tags", "")
@@ -336,7 +369,7 @@ def cmd_import_web(args):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Cross-Tool Memory - Universal memory for Devin Local, Claude CLI, and Git"
+        description="Cross-Tool Memory - Universal memory for AI coding tools (Devin, Cursor, VS Code, Aider, Claude CLI, Git)"
     )
     subparsers = parser.add_subparsers(dest="command", help="Commands")
     
@@ -348,6 +381,9 @@ def main():
     extract_parser = subparsers.add_parser("extract", help="Extract data from tools")
     extract_parser.add_argument("--all", action="store_true", help="Extract from all tools")
     extract_parser.add_argument("--devin-local", action="store_true", help="Extract from Devin Local")
+    extract_parser.add_argument("--cursor", action="store_true", help="Extract from Cursor IDE")
+    extract_parser.add_argument("--vscode-copilot", action="store_true", help="Extract from VS Code + Copilot")
+    extract_parser.add_argument("--aider", action="store_true", help="Extract from Aider CLI")
     extract_parser.add_argument("--claude", action="store_true", help="Extract from Claude CLI")
     extract_parser.add_argument("--git", action="store_true", help="Extract from Git")
     extract_parser.add_argument("--limit", type=int, default=100, help="Max sessions to extract")
@@ -363,7 +399,7 @@ def main():
     # recent
     recent_parser = subparsers.add_parser("recent", help="Show recent sessions")
     recent_parser.add_argument("--days", type=int, default=7, help="Number of days")
-    recent_parser.add_argument("--tool", choices=["devin_local", "claude_cli", "git"], help="Filter by tool")
+    recent_parser.add_argument("--tool", choices=["devin_local", "cursor", "vscode_copilot", "aider", "claude_cli", "git"], help="Filter by tool")
     recent_parser.set_defaults(func=cmd_recent)
     
     # entities
