@@ -1,4 +1,4 @@
-"""Bridge DevMemory to Windsurf Memory Banks.
+"""Bridge DevMemory to Devin Local Memory Banks.
 
 Syncs extracted decisions, patterns, and progress to .claude/memory/ and .cascade/memory/ files.
 """

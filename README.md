@@ -1,6 +1,6 @@
 # Cross-Tool Memory System
 
-Universal memory layer that sees everything you do across Cascade/Windsurf, Claude CLI, and Git.
+Universal memory layer that sees everything you do across Devin Local, Claude CLI, and Git.
 
 ## Quick Start
 
@@ -29,7 +29,7 @@ python3 cli.py decisions
 
 | Source | What | How |
 |--------|------|-----|
-| **Cascade/Windsurf** | Chat history, tool calls, file edits | Reads internal SQLite DB |
+| **Devin Local** | Chat history, tool calls, file edits | Reads internal SQLite DB |
 | **Claude CLI** | Conversations, project memory | Reads `~/.claude/` files |
 | **Claude Web** | Exported chat JSON from claude.ai | Parses export files |
 | **Git** | Commits, file changes, diffs | `git log` with stats |
@@ -47,7 +47,7 @@ python3 cli.py decisions
 
 ```
 ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐
-│   Cascade   │ │ Claude CLI  │ │ Claude Web│ │     Git     │
+│ Devin Local │ │ Claude CLI  │ │ Claude Web│ │     Git     │
 └──────┬──────┘ └──────┬──────┘ └──────┬──────┘ └──────┬──────┘
        │               │               │               │
        └───────────────┼───────────────┼───────────────┘
@@ -98,12 +98,12 @@ SQLite database at `~/.dev-memory/memory.db`:
 | `decisions` | Show active decisions |
 | `stats` | Database stats |
 | `related <entity>` | Entity graph |
-| `sync [--dry-run]` | Sync to Windsurf Memory Banks |
+| `sync [--dry-run]` | Sync to Devin Local Memory Banks |
 | `import-web [--file]` | Import Claude Web exports |
 
 ## Claude Web Integration
 
-Bridge your Claude.ai web sessions into DevMemory. Web LLM → CLI → Windsurf:
+Bridge your Claude.ai web sessions into DevMemory. Web LLM → CLI → Devin Local:
 
 ```bash
 # Export a chat from claude.ai (3-dot menu → Export chat)
@@ -119,14 +119,14 @@ python3 cli.py import-web --all
 - Entities extracted from the discussion
 - Decisions made during the session
 - Patterns discovered
-- Cross-links with CLI/Cascade sessions
+- Cross-links with CLI/Devin Local sessions
 
-After import, sync to Windsurf memory banks:
+After import, sync to Devin Local memory banks:
 ```bash
 python3 cli.py sync
 ```
 
-## Windsurf Memory Bank Bridge
+## Devin Local Memory Bank Bridge
 
 Auto-populate your memory banks from DevMemory:
 
@@ -164,7 +164,7 @@ claude-extract        # Full extract + sync
 claude-quick-extract  # Fast single-session
 ```
 
-## Cascade Integration
+## Devin Local Integration
 
 The `.claude/agents/memory-bridge.md` agent queries memory automatically:
 
@@ -192,7 +192,7 @@ This is a lightweight alternative that works across tools.
 - [ ] Real embedding model (sentence-transformers)
 - [ ] Consolidation pipeline
 - [ ] MCP server for Claude CLI
-- [ ] Automatic Cascade context injection
+- [ ] Automatic Devin Local context injection
 - [ ] Web UI for browsing memory
 - [ ] Cross-project entity linking
 

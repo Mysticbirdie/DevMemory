@@ -13,7 +13,7 @@ from memory.db import (
     insert_entity, insert_decision, insert_pattern,
     insert_file_activity, insert_entity_links,
 )
-from memory.extractors import CascadeExtractor, ClaudeCLIExtractor, GitExtractor
+from memory.extractors import DevinLocalExtractor, ClaudeCLIExtractor, GitExtractor
 from memory.intelligence import EntityExtractor, SessionSummarizer
 
 
@@ -71,15 +71,15 @@ def cmd_extract(args):
     summarizer = SessionSummarizer()
     total_sessions = 0
 
-    if args.cascade or args.all:
-        print("Extracting from Cascade/Windsurf...")
-        cascade = CascadeExtractor()
-        if cascade.is_available():
-            sessions = cascade.extract(limit=args.limit)
+    if args.devin_local or args.all:
+        print("Extracting from Devin Local...")
+        devin = DevinLocalExtractor()
+        if devin.is_available():
+            sessions = devin.extract(limit=args.limit)
             total_sessions += _ingest_sessions(conn, sessions, extractor, summarizer)
-            print(f"  📥 {len(sessions)} Cascade sessions")
+            print(f"  📥 {len(sessions)} Devin Local sessions")
         else:
-            print("  ⚠️ Cascade data not found")
+            print("  ⚠️ Devin Local data not found")
 
     if args.claude or args.all:
         print("Extracting from Claude CLI...")
@@ -119,7 +119,7 @@ def cmd_search(args):
     print(f"\n🔍 Found {len(results)} results for: '{args.query}'\n")
     
     for r in results:
-        tool_emoji = {"cascade": "⚡", "claude_cli": "🧠", "git": "📦"}.get(r.get("tool"), "📝")
+        tool_emoji = {"devin_local": "⚡", "claude_cli": "🧠", "git": "📦"}.get(r.get("tool"), "📝")
         date = r.get("started_at", "unknown")[:10] if r.get("started_at") else "unknown"
         summary = r.get("summary", "No summary")[:80]
         
@@ -143,7 +143,7 @@ def cmd_recent(args):
     print(f"\n📅 Last {args.days} days ({len(sessions)} sessions)\n")
     
     for s in sessions:
-        tool_emoji = {"cascade": "⚡", "claude_cli": "🧠", "git": "📦"}.get(s.get("tool"), "📝")
+        tool_emoji = {"devin_local": "⚡", "claude_cli": "🧠", "git": "📦"}.get(s.get("tool"), "📝")
         date = s.get("started_at", "")[:16] if s.get("started_at") else "unknown"
         summary = s.get("summary", "No summary")[:60]
         tags = s.get("tags", "")
@@ -262,7 +262,7 @@ def cmd_related(args):
 
 
 def cmd_sync(args):
-    """Sync DevMemory to Windsurf Memory Banks."""
+    """Sync DevMemory to Devin Local Memory Banks."""
     from memory.bridge import sync_all
     
     results = sync_all(dry_run=args.dry_run)
@@ -336,7 +336,7 @@ def cmd_import_web(args):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Cross-Tool Memory - Universal memory for Cascade, Claude CLI, and Git"
+        description="Cross-Tool Memory - Universal memory for Devin Local, Claude CLI, and Git"
     )
     subparsers = parser.add_subparsers(dest="command", help="Commands")
     
@@ -347,7 +347,7 @@ def main():
     # extract
     extract_parser = subparsers.add_parser("extract", help="Extract data from tools")
     extract_parser.add_argument("--all", action="store_true", help="Extract from all tools")
-    extract_parser.add_argument("--cascade", action="store_true", help="Extract from Cascade/Windsurf")
+    extract_parser.add_argument("--devin-local", action="store_true", help="Extract from Devin Local")
     extract_parser.add_argument("--claude", action="store_true", help="Extract from Claude CLI")
     extract_parser.add_argument("--git", action="store_true", help="Extract from Git")
     extract_parser.add_argument("--limit", type=int, default=100, help="Max sessions to extract")
@@ -363,7 +363,7 @@ def main():
     # recent
     recent_parser = subparsers.add_parser("recent", help="Show recent sessions")
     recent_parser.add_argument("--days", type=int, default=7, help="Number of days")
-    recent_parser.add_argument("--tool", choices=["cascade", "claude_cli", "git"], help="Filter by tool")
+    recent_parser.add_argument("--tool", choices=["devin_local", "claude_cli", "git"], help="Filter by tool")
     recent_parser.set_defaults(func=cmd_recent)
     
     # entities
@@ -383,7 +383,7 @@ def main():
     stats_parser.set_defaults(func=cmd_stats)
     
     # sync
-    sync_parser = subparsers.add_parser("sync", help="Sync DevMemory to Windsurf Memory Banks")
+    sync_parser = subparsers.add_parser("sync", help="Sync DevMemory to Devin Local Memory Banks")
     sync_parser.add_argument("--dry-run", action="store_true", help="Show what would be synced without writing")
     sync_parser.set_defaults(func=cmd_sync)
     

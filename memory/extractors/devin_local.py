@@ -1,6 +1,6 @@
-"""Extractor for Cascade/Windsurf chat history.
+"""Extractor for Devin Local chat history.
 
-Reads from Windsurf's internal SQLite database and cached session data.
+Reads from Devin Local's internal SQLite database and cached session data.
 """
 
 import sqlite3
@@ -12,8 +12,8 @@ from typing import List, Dict, Optional
 from datetime import datetime
 
 
-class CascadeExtractor:
-    """Extracts conversation history from Windsurf/Cascade."""
+class DevinLocalExtractor:
+    """Extracts conversation history from Devin Local."""
     
     # Primary database location
     DIPS_DB = Path.home() / "Library" / "Application Support" / "Windsurf" / "DIPS"
@@ -26,15 +26,15 @@ class CascadeExtractor:
         self.sessions: List[Dict] = []
     
     def is_available(self) -> bool:
-        """Check if Windsurf data is accessible."""
+        """Check if Devin Local data is accessible."""
         return self.db_path.exists()
     
     def extract(self, limit: Optional[int] = None) -> List[Dict]:
-        """Extract sessions from Windsurf data sources.
+        """Extract sessions from Devin Local data sources.
         
         Returns list of session dicts with format:
         {
-            "tool": "cascade",
+            "tool": "devin_local",
             "session_id": str,
             "started_at": str,
             "ended_at": str,
@@ -76,10 +76,10 @@ class CascadeExtractor:
         return sessions
     
     def _extract_from_dips(self, limit: Optional[int] = None) -> List[Dict]:
-        """Extract from Windsurf's DIPS SQLite database.
+        """Extract from Devin Local's DIPS SQLite database.
         
         Copies the database first to avoid locking issues since
-        Windsurf holds the file open while running.
+        Devin Local holds the file open while running.
         """
         sessions = []
         
@@ -188,8 +188,8 @@ class CascadeExtractor:
         turns.reverse()
         
         return {
-            "tool": "cascade",
-            "session_id": f"cascade_{table_name}_{hash(str(turns[0]['timestamp']))}",
+            "tool": "devin_local",
+            "session_id": f"devin_local_{table_name}_{hash(str(turns[0]['timestamp']))}",
             "started_at": turns[0].get("timestamp"),
             "ended_at": turns[-1].get("timestamp"),
             "summary": self._generate_summary(turns),
@@ -199,7 +199,7 @@ class CascadeExtractor:
         }
     
     def _extract_from_cache(self, limit: Optional[int] = None) -> List[Dict]:
-        """Extract from Windsurf's cached data files."""
+        """Extract from Devin Local's cached data files."""
         sessions = []
         
         # Look for cached data directories (hashed workspace IDs)
@@ -239,8 +239,8 @@ class CascadeExtractor:
             
             if turns:
                 return {
-                    "tool": "cascade",
-                    "session_id": f"cascade_cache_{filename}",
+                    "tool": "devin_local",
+                    "session_id": f"devin_local_cache_{filename}",
                     "started_at": turns[0].get("timestamp"),
                     "ended_at": turns[-1].get("timestamp"),
                     "summary": self._generate_summary(turns),
@@ -252,7 +252,7 @@ class CascadeExtractor:
         return None
     
     def _extract_from_claude_logs(self, limit: Optional[int] = None) -> List[Dict]:
-        """Extract from Claude VSCode.log files in Windsurf.
+        """Extract from Claude VSCode.log files in Devin Local.
         
         These logs contain actual conversation data from the Anthropic.claude-code extension.
         Located at: Windsurf/logs/<date>/window<N>/exthost/Anthropic.claude-code/Claude VSCode.log
@@ -323,10 +323,10 @@ class CascadeExtractor:
             return None
         
         # Generate session ID from file path
-        session_id = f"cascade_{log_file.parent.parent.name}_{log_file.parent.name}"
+        session_id = f"devin_local_{log_file.parent.parent.name}_{log_file.parent.name}"
         
         return {
-            "tool": "cascade",
+            "tool": "devin_local",
             "session_id": session_id,
             "started_at": datetime.fromtimestamp(log_file.stat().st_mtime).isoformat(),
             "ended_at": datetime.fromtimestamp(log_file.stat().st_mtime).isoformat(),
@@ -345,7 +345,7 @@ class CascadeExtractor:
             # Truncate to first sentence or 100 chars
             summary = first_msg.split('.')[0][:100]
             return summary + "..." if len(first_msg) > 100 else summary
-        return "Cascade session"
+        return "Devin Local session"
     
     def _extract_tags(self, turns: List[Dict]) -> List[str]:
         """Extract tags from conversation content."""

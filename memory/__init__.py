@@ -1,6 +1,6 @@
 """Cross-Tool Memory System
 
-Universal memory layer for Cascade, Claude CLI, and Git.
+Universal memory layer for Devin Local, Claude CLI, and Git.
 """
 
 __version__ = "0.1.0"

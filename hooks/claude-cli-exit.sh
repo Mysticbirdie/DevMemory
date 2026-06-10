@@ -75,6 +75,24 @@ claude() {
     return $CLAUDE_EXIT_CODE
 }
 
+# Unified extraction from ALL tools
+devmemory-extract-all() {
+    echo -e "${BLUE}🧠 DevMemory: Extracting from ALL tools...${NC}"
+    
+    if [ -n "$DEV_MEMORY_REPO" ] && [ -f "${DEV_MEMORY_REPO}/cli.py" ]; then
+        cd "$DEV_MEMORY_REPO"
+        python3 cli.py extract --all --limit 100
+        
+        echo -e "${BLUE}🔄 Syncing to Memory Banks...${NC}"
+        python3 cli.py sync
+        
+        echo -e "${GREEN}✅ Unified extraction complete${NC}"
+        python3 cli.py stats
+    else
+        echo -e "${YELLOW}⚠️  DEV_MEMORY_REPO not set or cli.py not found${NC}"
+    fi
+}
+
 # Alias for quick extraction without full sync
 claude-quick-extract() {
     echo -e "${BLUE}⚡ Quick extract (last session only)...${NC}"
@@ -90,6 +108,7 @@ claude-quick-extract() {
 export -f claude-extract 2>/dev/null || true
 export -f claude 2>/dev/null || true
 export -f claude-quick-extract 2>/dev/null || true
+export -f devmemory-extract-all 2>/dev/null || true
 
 # If script is sourced, print setup message
 if [ "${BASH_SOURCE[0]}" != "${0}" ]; then
@@ -97,4 +116,5 @@ if [ "${BASH_SOURCE[0]}" != "${0}" ]; then
     echo -e "   Use ${YELLOW}claude${NC} for auto-extract on exit"
     echo -e "   Use ${YELLOW}claude-extract${NC} for manual extraction"
     echo -e "   Use ${YELLOW}claude-quick-extract${NC} for fast single-session capture"
+    echo -e "   Use ${YELLOW}devmemory-extract-all${NC} for unified extraction from ALL tools"
 fi
