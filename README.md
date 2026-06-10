@@ -31,6 +31,7 @@ python3 cli.py decisions
 |--------|------|-----|
 | **Cascade/Windsurf** | Chat history, tool calls, file edits | Reads internal SQLite DB |
 | **Claude CLI** | Conversations, project memory | Reads `~/.claude/` files |
+| **Claude Web** | Exported chat JSON from claude.ai | Parses export files |
 | **Git** | Commits, file changes, diffs | `git log` with stats |
 
 ## What It Produces
@@ -45,12 +46,12 @@ python3 cli.py decisions
 ## Architecture
 
 ```
-┌─────────────┐ ┌─────────────┐ ┌─────────────┐
-│   Cascade   │ │ Claude CLI  │ │     Git     │
-└──────┬──────┘ └──────┬──────┘ └──────┬──────┘
-       │               │               │
-       └───────────────┼───────────────┘
-                       │
+┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐
+│   Cascade   │ │ Claude CLI  │ │ Claude Web│ │     Git     │
+└──────┬──────┘ └──────┬──────┘ └──────┬──────┘ └──────┬──────┘
+       │               │               │               │
+       └───────────────┼───────────────┼───────────────┘
+                       │               │
               ┌────────┴────────┐
               │   EXTRACTORS      │
               └────────┬────────┘
@@ -98,6 +99,32 @@ SQLite database at `~/.dev-memory/memory.db`:
 | `stats` | Database stats |
 | `related <entity>` | Entity graph |
 | `sync [--dry-run]` | Sync to Windsurf Memory Banks |
+| `import-web [--file]` | Import Claude Web exports |
+
+## Claude Web Integration
+
+Bridge your Claude.ai web sessions into DevMemory. Web LLM → CLI → Windsurf:
+
+```bash
+# Export a chat from claude.ai (3-dot menu → Export chat)
+# Then import into DevMemory:
+python3 cli.py import-web --file ~/Downloads/chat_export.json
+
+# Or scan ~/Downloads for all exports:
+python3 cli.py import-web --all
+```
+
+**What gets preserved:**
+- Full conversation turns (user + assistant)
+- Entities extracted from the discussion
+- Decisions made during the session
+- Patterns discovered
+- Cross-links with CLI/Cascade sessions
+
+After import, sync to Windsurf memory banks:
+```bash
+python3 cli.py sync
+```
 
 ## Windsurf Memory Bank Bridge
 
