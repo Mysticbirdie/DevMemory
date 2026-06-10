@@ -12,5 +12,8 @@ venv/
 *.sqlite
 *.sqlite3
 
+# Personal project brains — never commit (contain private decisions, risks, beta plans)
+projects/
+
 # OS / editor
 .DS_Store

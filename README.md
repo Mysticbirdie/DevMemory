@@ -113,6 +113,40 @@ SQLite database at `~/.dev-memory/memory.db`:
 | `sync [--dry-run]` | Sync to Memory Banks |
 | `import-web [--file]` | Import Claude Web exports |
 
+## Project Brains
+
+DevMemory can host canonical project memory for specific repositories. Each project gets:
+
+- `project-map.md` — architecture, stack, modules
+- `decision-log.md` — why things are the way they are
+- `open-threads.md` — unresolved issues and risks
+- `release/` — release briefs with scope and acceptance criteria
+- `docs-index.json` — indexed docs with freshness tags
+- `repo-facts.json` — machine-readable repo stats
+- `prompts/` — reusable agent prompts for planning
+
+Project brains live in `projects/<name>/` and are **gitignored by default** — they contain private decisions, risks, and release plans that should never be committed to a public repo. Store them locally or in a private repo.
+
+**To use a project brain:**
+
+```bash
+# Read full context
+cat projects/my-project/project-map.md
+cat projects/my-project/open-threads.md
+
+# Run planning prompts
+cat projects/my-project/prompts/01-inventory-pass.md
+```
+
+**To create a new project brain:**
+```bash
+mkdir -p projects/<name>/{release,prompts}
+# Create project-map.md, decision-log.md, open-threads.md
+# See docs/CLAUDE_DESKTOP_MCP.md for full template and MCP setup
+```
+
+---
+
 ## Claude Web Integration
 
 Bridge your Claude.ai web sessions into DevMemory. Works with any IDE:

@@ -21,10 +21,33 @@ from memory.extractors import (
 from memory.intelligence import EntityExtractor, SessionSummarizer
 
 
+def _output(data, args):
+    """Output data as JSON or plain text depending on --format."""
+    if getattr(args, 'format', None) == 'json':
+        print(json.dumps(data, indent=2, default=str))
+    elif isinstance(data, dict):
+        for key, value in data.items():
+            print(f"  {key}: {value}")
+    elif isinstance(data, list):
+        for item in data:
+            if isinstance(item, dict):
+                print("  ---")
+                for k, v in item.items():
+                    print(f"  {k}: {v}")
+            else:
+                print(f"  {item}")
+    else:
+        print(data)
+
+
 def cmd_init(args):
     """Initialize the database."""
     conn = init_db()
-    print("✅ Database initialized at ~/.dev-memory/memory.db")
+    msg = "✅ Database initialized at ~/.dev-memory/memory.db"
+    if getattr(args, 'format', None) == 'json':
+        print(json.dumps({"status": "initialized", "path": str(DB_PATH)}))
+    else:
+        print(msg)
     conn.close()
 
 
@@ -143,7 +166,12 @@ def cmd_extract(args):
             print("  ⚠️ Git data not found")
 
     conn.close()
-    if args.dry_run:
+    if getattr(args, 'format', None) == 'json':
+        print(json.dumps({
+            "dry_run": args.dry_run,
+            "sessions_stored": total_sessions
+        }))
+    elif args.dry_run:
         print(f"\n🔍 Dry run complete — no data stored")
     else:
         print(f"\n✅ Total sessions stored: {total_sessions}")
@@ -159,6 +187,11 @@ def cmd_search(args):
         conn.close()
         return
     
+    if getattr(args, 'format', None) == 'json':
+        print(json.dumps(results, indent=2, default=str))
+        conn.close()
+        return
+
     print(f"\n🔍 Found {len(results)} results for: '{args.query}'\n")
     
     for r in results:
@@ -183,6 +216,11 @@ def cmd_recent(args):
         conn.close()
         return
     
+    if getattr(args, 'format', None) == 'json':
+        print(json.dumps(sessions, indent=2, default=str))
+        conn.close()
+        return
+
     print(f"\n📅 Last {args.days} days ({len(sessions)} sessions)\n")
     
     for s in sessions:
@@ -190,16 +228,27 @@ def cmd_recent(args):
         date = s.get("started_at", "")[:16] if s.get("started_at") else "unknown"
         summary = s.get("summary", "No summary")[:60]
         tags = s.get("tags", "")
+        tags_str = ""
         if tags:
             try:
                 tags = json.loads(tags)
                 tags_str = ", ".join(tags[:3])
             except:
                 tags_str = str(tags)[:30]
-        else:
-            tags_str = ""
+
+        # Count turns for session length
+        turn_count = conn.execute(
+            "SELECT COUNT(*) FROM turns WHERE session_id = ?", (s.get("session_id"),)
+        ).fetchone()[0]
+
+        # Count entities for this session
+        entity_count = conn.execute(
+            "SELECT COUNT(*) FROM entities WHERE context LIKE ?",
+            (f"%{s.get('session_id')}%",)
+        ).fetchone()[0]
         
         print(f"{tool_emoji} {date} | {summary}")
+        print(f"   📏 {turn_count} turns  🔗 {entity_count} entities")
         if tags_str:
             print(f"   🏷️ {tags_str}")
         print()
@@ -217,6 +266,11 @@ def cmd_entities(args):
         conn.close()
         return
     
+    if getattr(args, 'format', None) == 'json':
+        print(json.dumps(entities, indent=2, default=str))
+        conn.close()
+        return
+
     print(f"\n🏷️ Entities ({len(entities)} found)\n")
     
     for e in entities[:args.limit]:
@@ -240,6 +294,11 @@ def cmd_decisions(args):
         conn.close()
         return
     
+    if getattr(args, 'format', None) == 'json':
+        print(json.dumps(decisions, indent=2, default=str))
+        conn.close()
+        return
+
     print(f"\n📋 Active Decisions ({len(decisions)})\n")
     
     for d in decisions[:args.limit]:
@@ -260,6 +319,11 @@ def cmd_stats(args):
     conn = init_db()
     stats = get_stats(conn)
     
+    if getattr(args, 'format', None) == 'json':
+        print(json.dumps(stats, indent=2, default=str))
+        conn.close()
+        return
+
     print("\n📊 Memory Statistics\n")
     print(f"  Sessions: {stats.get('sessions', 0)}")
     print(f"  Turns: {stats.get('turns', 0)}")
@@ -290,6 +354,14 @@ def cmd_tools(args):
         GitExtractor(),
     ]
     
+    if getattr(args, 'format', None) == 'json':
+        extractor_status = []
+        for ext in extractors:
+            stats = ext.get_stats()
+            extractor_status.append(stats)
+        print(json.dumps(extractor_status, indent=2, default=str))
+        return
+
     print("\n🔧 Available Extractors\n")
     
     for ext in extractors:
@@ -337,26 +409,41 @@ def cmd_verify(args):
         GitExtractor(),
     ]
     
-    print("\n🔍 Verifying Extractors\n")
-    
+    results = []
     all_ok = True
+    
     for ext in extractors:
         stats = ext.get_stats()
         available = stats.get("available", False)
         name = stats.get("display_name", "Unknown")
+        result = {"tool": stats.get("tool"), "name": name, "available": available, "dry_run_ok": False, "error": None}
         
         if available:
-            print(f"  ✅ {name:<25} — Data accessible")
             # Try dry-run extraction
             try:
                 preview = ext.extract(limit=1, dry_run=True)
-                if preview:
-                    print(f"     └─ {preview[0].get('summary', 'Ready')}")
+                result["dry_run_ok"] = True
+                result["preview"] = preview[0].get('summary', 'Ready') if preview else None
             except Exception as e:
-                print(f"     ⚠️  Dry run failed: {e}")
+                result["error"] = str(e)
                 all_ok = False
+        results.append(result)
+    
+    if getattr(args, 'format', None) == 'json':
+        print(json.dumps({"all_ok": all_ok, "results": results}, indent=2, default=str))
+        return
+
+    print("\n🔍 Verifying Extractors\n")
+    
+    for result in results:
+        if result["available"]:
+            print(f"  ✅ {result['name']:<25} — Data accessible")
+            if result["dry_run_ok"]:
+                print(f"     └─ {result.get('preview', 'Ready')}")
+            else:
+                print(f"     ⚠️  Dry run failed: {result.get('error')}")
         else:
-            print(f"  ❌ {name:<25} — No data found")
+            print(f"  ❌ {result['name']:<25} — No data found")
     
     if all_ok:
         print("\n  ✅ All available extractors verified successfully\n")
@@ -396,16 +483,19 @@ def cmd_sync(args):
     """Sync DevMemory to Devin Local Memory Banks."""
     from memory.bridge import sync_all
     
-    results = sync_all(dry_run=args.dry_run)
+    results = sync_all(dry_run=args.dry_run, tool_filter=args.tool)
     
+    total = sum(results.values())
+    if getattr(args, 'format', None) == 'json':
+        print(json.dumps({"dry_run": args.dry_run, "synced": results, "total": total}, indent=2, default=str))
+        return
+
     if args.dry_run:
         print("\n🔍 Dry run - no changes made")
+    elif total == 0:
+        print("\n✅ Memory banks already up to date")
     else:
-        total = sum(results.values())
-        if total == 0:
-            print("\n✅ Memory banks already up to date")
-        else:
-            print(f"\n✅ Synced {total} items to Memory Banks")
+        print(f"\n✅ Synced {total} items to Memory Banks")
 
 
 def cmd_import_web(args):
@@ -525,6 +615,7 @@ def main():
     parser = argparse.ArgumentParser(
         description="Cross-Tool Memory - Universal memory for AI coding tools (Devin, Cursor, VS Code, Aider, Claude CLI, Git)"
     )
+    parser.add_argument("--format", choices=["text", "json"], default="text", help="Output format (default: text)")
     subparsers = parser.add_subparsers(dest="command", help="Commands")
     
     # init
@@ -585,6 +676,7 @@ def main():
     # sync
     sync_parser = subparsers.add_parser("sync", help="Sync DevMemory to Devin Local Memory Banks")
     sync_parser.add_argument("--dry-run", action="store_true", help="Show what would be synced without writing")
+    sync_parser.add_argument("--tool", choices=["devin_local", "cursor", "vscode_copilot", "aider", "claude_cli", "git"], help="Only sync entries from this tool")
     sync_parser.set_defaults(func=cmd_sync)
     
     # related
