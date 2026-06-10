@@ -39,11 +39,11 @@ claude-extract() {
     # Check if dev-memory repo is available
     if [ -n "$DEV_MEMORY_REPO" ] && [ -f "${DEV_MEMORY_REPO}/cli.py" ]; then
         cd "$DEV_MEMORY_REPO"
-        python3 -m memory.cli extract --tool claude-cli --days 1
+        python3 cli.py extract --claude --limit 10
         
         # Also sync to memory banks
         echo -e "${BLUE}🔄 Syncing to Memory Banks...${NC}"
-        python3 -c "from memory.bridge import sync_all; sync_all()"
+        python3 cli.py sync
     else
         # Fallback: use global dev-memory if installed
         if command -v dev-memory &> /dev/null; then
@@ -80,7 +80,7 @@ claude-quick-extract() {
     echo -e "${BLUE}⚡ Quick extract (last session only)...${NC}"
     if [ -n "$DEV_MEMORY_REPO" ]; then
         cd "$DEV_MEMORY_REPO" 2>/dev/null || true
-        python3 -m memory.cli extract --tool claude-cli --limit 1 --quiet 2>/dev/null || true
+        python3 cli.py extract --claude --limit 1 --quiet 2>/dev/null || true
     else
         echo -e "${YELLOW}⚠️  DEV_MEMORY_REPO not set${NC}"
     fi

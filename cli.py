@@ -261,6 +261,22 @@ def cmd_related(args):
     conn.close()
 
 
+def cmd_sync(args):
+    """Sync DevMemory to Windsurf Memory Banks."""
+    from memory.bridge import sync_all
+    
+    results = sync_all(dry_run=args.dry_run)
+    
+    if args.dry_run:
+        print("\n🔍 Dry run - no changes made")
+    else:
+        total = sum(results.values())
+        if total == 0:
+            print("\n✅ Memory banks already up to date")
+        else:
+            print(f"\n✅ Synced {total} items to Memory Banks")
+
+
 def cmd_import_web(args):
     """Import Claude Web exports."""
     from memory.extractors.claude_web import ClaudeWebExtractor
@@ -365,6 +381,11 @@ def main():
     # stats
     stats_parser = subparsers.add_parser("stats", help="Show database statistics")
     stats_parser.set_defaults(func=cmd_stats)
+    
+    # sync
+    sync_parser = subparsers.add_parser("sync", help="Sync DevMemory to Windsurf Memory Banks")
+    sync_parser.add_argument("--dry-run", action="store_true", help="Show what would be synced without writing")
+    sync_parser.set_defaults(func=cmd_sync)
     
     # related
     related_parser = subparsers.add_parser("related", help="Show related entities")
