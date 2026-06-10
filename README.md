@@ -1,6 +1,6 @@
-# Cross-Tool Memory System
+# Cross-Tool Memory System — Devin Local, Claude CLI, Claude Web & Git
 
-Universal memory layer that sees everything you do across Devin Local, Claude CLI, and Git.
+Universal memory layer that sees everything you do across Devin Local, Claude CLI, Claude Web, and Git.
 
 ## Quick Start
 
