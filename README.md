@@ -269,18 +269,6 @@ The `.claude/agents/memory-bridge.md` agent queries memory automatically:
 /memory search <query>   # Find past sessions
 ```
 
-## Differences from Cortex
-
-| | **Cross-Tool Memory** | **Cortex** |
-|---|---|---|
-| **Scope** | Universal (any IDE/CLI) | Claude Code only |
-| **Storage** | SQLite (simple) | PostgreSQL + pgvector |
-| **Extraction** | Read-only from tools | Hooks into tool calls |
-| **Consolidation** | Basic (planned) | Advanced (sleep cycles) |
-| **Size** | ~500 lines Python | 8000+ lines |
-| **Install** | `git clone` + `pip` | Marketplace plugin |
-| **Goal** | See everything everywhere | Deep Claude integration |
-
 This is a lightweight alternative that works across tools.
 
 ## Future Work
