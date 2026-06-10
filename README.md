@@ -1,4 +1,4 @@
-# DevMemory — Universal Memory for AI Coding Tools
+# DevTrail — Universal Memory Decision Tracing for AI Coding Tools
 
 Cross-Tool Memory System. Extracts and unifies your AI coding conversations from **any IDE or CLI** into a searchable, persistent memory layer.
 
