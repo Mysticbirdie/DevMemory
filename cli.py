@@ -16,7 +16,8 @@ from memory.db import (
 from memory.extractors import (
     DevinLocalExtractor, CursorExtractor, VSCodeCopilotExtractor,
     AiderExtractor, ClaudeCLIExtractor, ClaudeProjectsExtractor,
-    ClaudeArtifactsExtractor, ClaudeCanvasExtractor, GitExtractor
+    ClaudeArtifactsExtractor, ClaudeCanvasExtractor, GitExtractor,
+    OllamaExtractor
 )
 from memory.intelligence import EntityExtractor, SessionSummarizer
 
@@ -164,6 +165,17 @@ def cmd_extract(args):
             print(f"  📥 {len(sessions)} Git commits")
         else:
             print("  ⚠️ Git data not found")
+
+    if args.ollama or args.all:
+        print("Extracting from Ollama..." if not args.dry_run else "Dry run: Ollama...")
+        ollama = OllamaExtractor()
+        if ollama.is_available():
+            sessions = ollama.extract(limit=args.limit, dry_run=args.dry_run)
+            if not args.dry_run:
+                total_sessions += _ingest_sessions(conn, sessions, extractor, summarizer)
+            print(f"  📥 {len(sessions)} Ollama sessions")
+        else:
+            print("  ⚠️ Ollama not running on localhost:11434")
 
     conn.close()
     if getattr(args, 'format', None) == 'json':
@@ -352,6 +364,7 @@ def cmd_tools(args):
         ClaudeArtifactsExtractor(),
         ClaudeCanvasExtractor(),
         GitExtractor(),
+        OllamaExtractor(),
     ]
     
     if getattr(args, 'format', None) == 'json':
@@ -390,6 +403,8 @@ def cmd_tools(args):
                 print(f"     🎨 {stats['total_artifacts']} artifacts")
             if "canvas_exports" in stats:
                 print(f"     🖼️  {stats['canvas_exports']} canvas exports")
+            if "total_models" in stats:
+                print(f"     🤖 {stats['total_models']} models ({stats.get('coding_models', 0)} coding)")
     
     print("\n  Use 'extract --<tool>' to extract from a specific tool")
     print("  Use 'verify' to test all extractors without extracting\n")
@@ -407,6 +422,7 @@ def cmd_verify(args):
         ClaudeArtifactsExtractor(),
         ClaudeCanvasExtractor(),
         GitExtractor(),
+        OllamaExtractor(),
     ]
     
     results = []
@@ -631,6 +647,7 @@ def main():
     extract_parser.add_argument("--aider", action="store_true", help="Extract from Aider CLI")
     extract_parser.add_argument("--claude", action="store_true", help="Extract from Claude CLI")
     extract_parser.add_argument("--git", action="store_true", help="Extract from Git")
+    extract_parser.add_argument("--ollama", action="store_true", help="Extract from Ollama local/cloud models")
     extract_parser.add_argument("--limit", type=int, default=100, help="Max sessions to extract")
     extract_parser.add_argument("--since", type=int, default=30, help="Git: days ago to start from")
     extract_parser.add_argument("--dry-run", action="store_true", help="Preview what would be extracted without storing")
@@ -645,7 +662,7 @@ def main():
     # recent
     recent_parser = subparsers.add_parser("recent", help="Show recent sessions")
     recent_parser.add_argument("--days", type=int, default=7, help="Number of days")
-    recent_parser.add_argument("--tool", choices=["devin_local", "cursor", "vscode_copilot", "aider", "claude_cli", "git"], help="Filter by tool")
+    recent_parser.add_argument("--tool", choices=["devin_local", "cursor", "vscode_copilot", "aider", "claude_cli", "git", "ollama"], help="Filter by tool")
     recent_parser.set_defaults(func=cmd_recent)
     
     # entities
@@ -670,13 +687,13 @@ def main():
     
     # stats
     stats_parser = subparsers.add_parser("stats", help="Show database statistics")
-    stats_parser.add_argument("--tool", choices=["devin_local", "cursor", "vscode_copilot", "aider", "claude_cli", "git"], help="Filter by tool")
+    stats_parser.add_argument("--tool", choices=["devin_local", "cursor", "vscode_copilot", "aider", "claude_cli", "git", "ollama"], help="Filter by tool")
     stats_parser.set_defaults(func=cmd_stats)
     
     # sync
     sync_parser = subparsers.add_parser("sync", help="Sync DevMemory to Devin Local Memory Banks")
     sync_parser.add_argument("--dry-run", action="store_true", help="Show what would be synced without writing")
-    sync_parser.add_argument("--tool", choices=["devin_local", "cursor", "vscode_copilot", "aider", "claude_cli", "git"], help="Only sync entries from this tool")
+    sync_parser.add_argument("--tool", choices=["devin_local", "cursor", "vscode_copilot", "aider", "claude_cli", "git", "ollama"], help="Only sync entries from this tool")
     sync_parser.set_defaults(func=cmd_sync)
     
     # related

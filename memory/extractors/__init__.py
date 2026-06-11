@@ -9,6 +9,7 @@ Supported tools:
 - Claude Web (claude.ai chat exports)
 - Claude Projects, Artifacts, Canvas (claude.ai design exports)
 - Git
+- Ollama (local + cloud models)
 """
 
 from .base import BaseExtractor
@@ -20,11 +21,12 @@ from .claude_cli import ClaudeCLIExtractor
 from .claude_web import ClaudeWebExtractor
 from .claude_projects import ClaudeProjectsExtractor, ClaudeArtifactsExtractor, ClaudeCanvasExtractor
 from .git import GitExtractor
+from .ollama import OllamaExtractor
 
 __all__ = [
     "BaseExtractor",
     "DevinLocalExtractor",
-    "CursorExtractor", 
+    "CursorExtractor",
     "VSCodeCopilotExtractor",
     "AiderExtractor",
     "ClaudeCLIExtractor",
@@ -33,4 +35,5 @@ __all__ = [
     "ClaudeArtifactsExtractor",
     "ClaudeCanvasExtractor",
     "GitExtractor",
+    "OllamaExtractor",
 ]
