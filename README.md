@@ -1,56 +1,132 @@
-# DevTrail — Universal Memory Decision Tracing for AI Coding Tools
+# DevTrail — Local Cross-Tool Memory for AI Coding
 
-Cross-Tool Memory System. Extracts and unifies your AI coding conversations from **any IDE or CLI** into a searchable, persistent memory layer.
+DevTrail is a local CLI tool that captures and unifies your AI coding history across tools into a single searchable memory layer on your machine. It extracts conversations, decisions, entities, patterns, and Git activity into a SQLite database so you can recover context after tool switching, context-window loss, or long gaps between sessions.
 
-**Works with**: Devin, Cursor, VS Code + Copilot, Aider, Claude CLI, Claude Web, Git
+It is designed for developers who move between Claude, Cursor, Devin, Aider, VS Code + Copilot, Git, and similar tools and want one place to ask: *what did I decide, where did this change come from, and what was I doing last time?*
 
-## Quick Start
+**What DevTrail is:**
+- A local SQLite-backed memory database for AI-assisted development.
+- A cross-tool layer under per-tool memory files like `CLAUDE.md`, `.claude/memory/`, or `.cascade/memory/`.
+- A way to search decisions and activity without replaying entire chat histories.
+
+**What DevTrail is not:**
+- Not a hosted service.
+- Not a replacement for your IDE or model-specific context files.
+- Not useful if you only work in one tool and that tool already gives you enough continuity.
+
+## 2-Minute Quick Start
 
 ```bash
-# Initialize database
-cd dev-memory
+# Install dependencies
+pip install -r requirements.txt
+
+# Initialize local database
 python3 cli.py init
 
-# Extract data from all tools
+# Extract from everything DevTrail can currently see
 python3 cli.py extract --all
 
 # Search your history
 python3 cli.py search "Redis race condition"
-
-# Show recent activity
-python3 cli.py recent --days 7
-
-# View extracted entities
-python3 cli.py entities
-
-# Show active decisions
-python3 cli.py decisions
 ```
 
-## What It Captures
+This creates a local database at `~/.dev-memory/memory.db` and ingests any supported tool data already present on your machine.
 
-| Source | What | How | Status |
-|--------|------|-----|--------|
-| **Devin** | Chat history, tool calls, file edits | VS Code extension SQLite DB | ✅ Ready |
-| **Cursor** | AI chat, composer sessions | VS Code fork data files | ✅ Ready |
-| **VS Code + Copilot** | GitHub Copilot Chat | Extension globalStorage | ✅ Ready |
-| **Aider** | Pair programming sessions | CLI history files (`~/.aider/`) | ✅ Ready |
-| **Claude CLI** | Conversations, project memory | Reads `~/.claude/` files | ✅ Ready |
-| **Claude Web** | Exported chat JSON from claude.ai | Parses export files | ✅ Ready |
-| **Git** | Commits, file changes, diffs | `git log` with stats | ✅ Ready |
+## What You’ll See If It Worked
 
-## What It Produces
+After `init`:
 
-- **Sessions** — unified conversation history from all tools
-- **Entities** — extracted concepts (e.g. Redis, FastAPI, your project names, etc.)
-- **Decisions** — architectural choices with context
-- **Patterns** — fixes, refactors, conventions discovered
-- **File Activity** — what was touched when
-- **Entity Graph** — relationships between concepts
+```text
+[init] created database at /Users/you/.dev-memory/memory.db
+[init] created tables: sessions, turns, entities, decisions, patterns, file_activity, session_embeddings
+```
+
+After `extract --all` (example):
+
+```text
+[extract] Devin: 3 new sessions
+[extract] Claude CLI: 5 new sessions
+[extract] Claude Web exports: 2 files imported
+[extract] Aider: 4 sessions
+[extract] Git: 18 commits, 42 file changes
+[extract] total: 32 sessions ingested
+```
+
+After a search:
+
+```bash
+python3 cli.py search "Redis race condition"
+```
+
+```text
+[search] query: "Redis race condition"
+
+2025-12-10 14:32  claude_cli  project-x
+  - discussed Redis lock implementation
+  - decided to use SETNX with expiry
+  - files: app/cache.py, tests/test_cache.py
+
+2025-12-11 09:17  git  project-x
+  - commit 8f3c2ab "Add Redis lock and tests"
+  - files: app/cache.py, tests/test_cache.py
+```
+
+If `extract --all` reports zero sessions, that usually means DevTrail did not find any supported source data yet. In that case, try a source-specific extractor or import Claude Web exports manually.
+
+## Supported Sources
+
+| Source | What it captures | How | Status |
+|--------|------------------|-----|--------|
+| Devin | Chat history, tool calls, file edits | VS Code extension SQLite DB | Ready  |
+| Cursor | AI chat, composer sessions | VS Code fork data files | Ready  |
+| VS Code + Copilot | GitHub Copilot Chat | Extension globalStorage | Ready  |
+| Aider | Pair programming sessions | CLI history files in `~/.aider/` | Ready  |
+| Claude CLI | Conversations, project memory | Reads `~/.claude/` files | Ready  |
+| Claude Web | Exported chat JSON from claude.ai | Parses export files | Ready  |
+| Git | Commits, file changes, diffs | `git log` with stats | Ready  |
+
+## What DevTrail Stores
+
+DevTrail turns raw activity into a few durable primitives:
+
+- **Sessions** — unified session records from all supported tools.
+- **Turns** — individual conversation turns within sessions.
+- **Entities** — extracted concepts such as libraries, systems, projects, and technologies.
+- **Decisions** — architectural and implementation choices with context.
+- **Patterns** — repeated fixes, refactors, and conventions.
+- **File activity** — which files were touched and when.
+- **Embeddings** — semantic vectors for retrieval via `sqlite-vec`.
+
+## Why This Exists
+
+Per-tool memory helps with cold start, but not with fragmentation. A `CLAUDE.md`, a plugin-generated `CLAUDE-CONTEXT.md`, or an IDE memory bank can help one assistant recover state after `/clear`, but those memories usually stay trapped inside that one tool. DevTrail is meant to sit underneath them as a neutral local layer that survives switching between models, CLIs, IDEs, and web UIs.
+
+That means you can use model-specific memories where they work best, while keeping one cross-tool trail of what happened, what changed, and why those choices were made.
+
+## Core Workflow
+
+A typical loop looks like this:
+
+1. Work in one or more tools: Claude CLI, Claude Web, Cursor, Devin, Aider, Copilot, Git.
+2. Run extraction to pull those traces into one database.
+3. Search or inspect the database when you need to recover context.
+4. Sync selected decisions and patterns back into your IDE memory files if you use them.
+
+Example commands:
+
+```bash
+python3 cli.py init
+python3 cli.py extract --all
+python3 cli.py recent --days 7
+python3 cli.py entities
+python3 cli.py decisions
+python3 cli.py related Redis
+python3 cli.py sync
+```
 
 ## Architecture
 
-```
+```text
 ┌────────┐ ┌────────┐ ┌──────────┐ ┌────────┐ ┌──────────┐ ┌────────┐
 │ Devin  │ │ Cursor │ │ VS Code  │ │ Aider  │ │ Claude   │ │  Git   │
 │        │ │        │ │ Copilot  │ │        │ │ CLI/Web  │ │        │
@@ -59,7 +135,7 @@ python3 cli.py decisions
     └──────────┼───────────┼───────────┼───────────┼───────────┘
                │           │           │
               ┌────────┴────────┐
-              │   EXTRACTORS      │
+              │   EXTRACTORS    │
               └────────┬────────┘
                        │
               ┌────────┴────────┐
@@ -79,44 +155,82 @@ python3 cli.py decisions
               └─────────────────┘
 ```
 
+The design is intentionally simple: extract local traces, normalize them into a common schema, and make them queryable from a CLI or agent workflow.
+
 ## Database Schema
 
-SQLite database at `~/.dev-memory/memory.db`:
+The SQLite database lives at `~/.dev-memory/memory.db`.
 
-- `sessions` — raw sessions from all tools
-- `turns` — individual conversation turns
-- `entities` — extracted concepts with mention counts
-- `entity_links` — co-occurrence relationships
-- `decisions` — architectural decisions
-- `patterns` — code patterns and fixes
-- `file_activity` — file changes across sessions
-- `session_embeddings` — semantic vectors (sqlite-vec)
+| Table | Purpose |
+|-------|---------|
+| `sessions` | Raw sessions from all tools.  |
+| `turns` | Individual conversation turns.  |
+| `entities` | Extracted concepts with mention counts.  |
+| `entity_links` | Co-occurrence relationships between concepts.  |
+| `decisions` | Architectural or implementation decisions.  |
+| `patterns` | Repeated fixes, conventions, and refactors.  |
+| `file_activity` | File changes across sessions and commits.  |
+| `session_embeddings` | Semantic vectors for retrieval.  |
+
+This schema is meant to support both simple search and richer context reconstruction: not just “find me the chat,” but “show the decision, related files, and nearby entities.”
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `init` | Create database |
-| `extract --all` | Pull from **all** IDEs and tools |
-| `extract --devin-local` | Extract from Devin |
-| `extract --cursor` | Extract from Cursor IDE |
-| `extract --vscode-copilot` | Extract from VS Code + Copilot |
-| `extract --aider` | Extract from Aider CLI |
-| `extract --claude` | Extract from Claude CLI |
-| `extract --git` | Extract from Git |
-| `search <query>` | Full-text search across all tools |
-| `recent --days N` | Recent sessions |
-| `entities` | Show extracted concepts |
-| `decisions` | Show active decisions |
-| `stats` | Database statistics |
-| `related <entity>` | Entity relationship graph |
-| `sync [--dry-run]` | Sync to Memory Banks |
-| `import-web [--file]` | Import Claude Web exports |
+| `init` | Create the local database.  |
+| `extract --all` | Pull from all supported tools.  |
+| `extract --devin-local` | Extract from Devin.  |
+| `extract --cursor` | Extract from Cursor IDE.  |
+| `extract --vscode-copilot` | Extract from VS Code + Copilot.  |
+| `extract --aider` | Extract from Aider CLI.  |
+| `extract --claude` | Extract from Claude CLI.  |
+| `extract --git` | Extract from Git history.  |
+| `search <query>` | Full-text search across all tools.  |
+| `recent --days N` | Show recent sessions.  |
+| `entities` | Show extracted concepts.  |
+| `decisions` | Show active decisions.  |
+| `stats` | Show database statistics.  |
+| `related <entity>` | Show entity relationship graph.  |
+| `sync [--dry-run]` | Sync to memory banks.  |
+| `import-web [--file]` | Import Claude Web exports.  |
+
+## Claude Web Integration
+
+DevTrail can import exported Claude.ai chats into the same memory store used for local IDE and CLI traces.
+
+```bash
+# Import one export
+python3 cli.py import-web --file ~/Downloads/chat_export.json
+
+# Or scan Downloads for all exports
+python3 cli.py import-web --all
+```
+
+Imported chats preserve full conversation turns and can contribute to entities, decisions, patterns, and cross-links with other sessions.
+
+## Memory Bank Bridge
+
+If you already use IDE memory files, DevTrail can write selected information back out so other tools start with better context.
+
+```bash
+# Sync decisions and patterns into memory files
+python3 cli.py sync
+
+# Preview without writing
+python3 cli.py sync --dry-run
+```
+
+Current sync targets:
+- Decisions → `.cascade/memory/decisions.md`
+- Patterns → `.cascade/memory/patterns.md`
+- Progress → `.claude/memory/progress.md`
 
 ## Project Brains
 
-DevMemory can host canonical project memory for specific repositories. Each project gets:
+DevTrail can host a private local “project brain” for each repository. These are designed to stay out of public repos by default because they often include private decisions, risks, notes, and planning artifacts.
 
+Each project can include:
 - `project-map.md` — architecture, stack, modules
 - `decision-log.md` — why things are the way they are
 - `open-threads.md` — unresolved issues and risks
@@ -125,166 +239,104 @@ DevMemory can host canonical project memory for specific repositories. Each proj
 - `repo-facts.json` — machine-readable repo stats
 - `prompts/` — reusable agent prompts for planning
 
-Project brains live in `projects/<name>/` and are **gitignored by default** — they contain private decisions, risks, and release plans that should never be committed to a public repo. Store them locally or in a private repo.
-
-**To use a project brain:**
+Example layout:
 
 ```bash
-# Read full context
-cat projects/my-project/project-map.md
-cat projects/my-project/open-threads.md
-
-# Run planning prompts
-cat projects/my-project/prompts/01-inventory-pass.md
+projects/<name>/
+├── project-map.md
+├── decision-log.md
+├── open-threads.md
+├── docs-index.json
+├── repo-facts.json
+├── release/
+└── prompts/
 ```
 
-**To create a new project brain:**
+To create one:
+
 ```bash
 mkdir -p projects/<name>/{release,prompts}
-# Create project-map.md, decision-log.md, open-threads.md
-# See docs/CLAUDE_DESKTOP_MCP.md for full template and MCP setup
+# create project-map.md, decision-log.md, open-threads.md
 ```
-
----
-
-## Claude Web Integration
-
-Bridge your Claude.ai web sessions into DevMemory. Works with any IDE:
-
-```bash
-# Export a chat from claude.ai (3-dot menu → Export chat)
-# Then import into DevMemory:
-python3 cli.py import-web --file ~/Downloads/chat_export.json
-
-# Or scan ~/Downloads for all exports:
-python3 cli.py import-web --all
-```
-
-**What gets preserved:**
-- Full conversation turns (user + assistant)
-- Entities extracted from the discussion
-- Decisions made during the session
-- Patterns discovered
-- Cross-links with all IDE sessions
-
-After import, sync to your IDE's memory banks:
-```bash
-python3 cli.py sync
-```
-
-## Memory Bank Bridge
-
-Auto-populate your IDE's memory banks from DevMemory (works with any IDE that uses `.claude/memory/` or `.cascade/memory/`):
-
-```bash
-# Sync decisions to .cascade/memory/decisions.md
-python3 cli.py sync
-
-# Preview without writing
-python3 cli.py sync --dry-run
-```
-
-Syncs:
-- **Decisions** → `.cascade/memory/decisions.md`
-- **Patterns** → `.cascade/memory/patterns.md`
-- **Progress** → `.claude/memory/progress.md`
 
 ## Claude CLI Hook
 
-Auto-extract on every `/exit`:
+DevTrail can auto-extract when you exit Claude CLI.
 
 ```bash
 # Add to ~/.bashrc or ~/.zshrc
 source /path/to/dev-memory/hooks/claude-cli-exit.sh
 
-# Now 'claude' wrapper auto-extracts on exit
+# Wrapper now auto-extracts on exit
 claude
 # ... work ...
 /exit
-# 💾 Auto-extract runs
 ```
 
-Or manual extraction:
+Manual options:
+
 ```bash
-claude-extract        # Full extract + sync
-claude-quick-extract  # Fast single-session
+claude-extract
+claude-quick-extract
 ```
 
-## Adding New IDE Support
+## Adding New Tool Support
 
-DevMemory is designed to be extensible. Adding a new IDE takes ~30 minutes:
+The extractor model is intentionally simple so new tool integrations are cheap to add.
 
-### 1. Create an Extractor
+1. Create an extractor in `memory/extractors/`.
+2. Register it in `__init__.py`.
+3. Add a CLI flag.
+4. Call it from `cmd_extract()`.
+
+Minimal example:
 
 ```python
-# memory/extractors/my_ide.py
 from .base import BaseExtractor
 
 class MyIDEExtractor(BaseExtractor):
     TOOL_NAME = "my_ide"
     DISPLAY_NAME = "My IDE"
-    
+
     def is_available(self) -> bool:
-        # Check if IDE data exists
-        return Path.home().exists()
-    
+        return True
+
     def extract(self, limit=None):
-        # Return list of session dicts
         sessions = []
-        # ... your extraction logic ...
         return sessions
 ```
 
-### 2. Register in `__init__.py`
+The goal is to normalize a new source into the same core concepts so search, sync, and downstream memory tools work automatically.
 
-```python
-from .my_ide import MyIDEExtractor
-__all__ = [..., "MyIDEExtractor"]
-```
+## Best Fit
 
-### 3. Add CLI Flag
+DevTrail is a strong fit if you:
+- switch between multiple models or interfaces,
+- use Git as part of your context trail,
+- want to preserve reasoning outside a single assistant session,
+- already use memory files but want something underneath them,
+- want local-first storage and search.
 
-```python
-extract_parser.add_argument("--my-ide", action="store_true", help="Extract from My IDE")
-```
+It is a weaker fit if you:
+- stay inside one assistant all day,
+- do not care about history after the current session,
+- already have a workflow that makes cross-tool context irrelevant.
 
-### 4. Add to `cmd_extract()`
+## Roadmap
 
-```python
-if args.my_ide or args.all:
-    my_ide = MyIDEExtractor()
-    if my_ide.is_available():
-        sessions = my_ide.extract(limit=args.limit)
-        total_sessions += _ingest_sessions(conn, sessions, extractor, summarizer)
-```
-
-That's it! The new IDE is now fully integrated with search, sync, and memory banks.
-
-## Devin Local Integration
-
-The `.claude/agents/memory-bridge.md` agent queries memory automatically:
-
-```
-/memory context          # Inject relevant history
-/memory search <query>   # Find past sessions
-```
-
-This is a lightweight alternative that works across tools.
-
-## Future Work
-
-- [ ] **Zed IDE support** — Native AI chat integration
-- [ ] **JetBrains IDEs** — IntelliJ, PyCharm, WebStorm AI assistants
-- [ ] **Codeium support** — Free AI autocomplete and chat
-- [ ] **Supermaven support** — AI code completion history
-- [ ] **Continue.dev support** — Open-source AI assistant
-- [ ] Real embedding model (sentence-transformers)
-- [ ] Consolidation pipeline
-- [ ] MCP server for Claude CLI
-- [ ] Automatic context injection for any IDE
-- [ ] Web UI for browsing memory
-- [ ] Cross-project entity linking
+Planned or proposed work includes:
+- Zed IDE support
+- JetBrains IDE support
+- Codeium support
+- Supermaven support
+- Continue.dev support
+- Real embedding model integration
+- Consolidation pipeline
+- MCP server for Claude CLI
+- Automatic context injection for any IDE
+- Web UI for browsing memory
+- Cross-project entity linking
 
 ## License
 
-MIT
+MIT.
