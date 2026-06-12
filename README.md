@@ -228,6 +228,76 @@ Current sync targets:
 - Patterns → `.cascade/memory/patterns.md`
 - Progress → `.claude/memory/progress.md`
 
+## MCP Server (Auto-Extracting)
+
+DevTrail now exposes its core capabilities as an MCP server. This means your IDE agent (Claude Code, Devin, Cursor, etc.) can query your cross-tool memory directly — no manual `extract` step required.
+
+**What changes:**
+- The MCP server auto-extracts from all available sources on startup (if data is >24h old).
+- Your agent can call `devtrail_search`, `devtrail_decisions`, `devtrail_recent`, and more as native tools.
+- At the end of a session, your agent can call `devtrail_capture_session` to push the conversation into DevTrail immediately.
+
+**Setup:**
+
+Add to your IDE's MCP settings:
+
+```json
+{
+  "mcpServers": {
+    "devtrail": {
+      "command": "python3",
+      "args": ["/path/to/DevTrail/mcp_server.py"]
+    }
+  }
+}
+```
+
+For Claude Code (`~/.claude/settings.json`):
+
+```json
+{
+  "mcpServers": {
+    "devtrail": {
+      "command": "python3",
+      "args": ["/path/to/DevTrail/mcp_server.py"]
+    }
+  }
+}
+```
+
+For Windsurf/Cascade, add to your user settings under `mcpServers`.
+
+**Available MCP Tools:**
+
+| Tool | Purpose |
+|------|---------|
+| `devtrail_search` | Search sessions, decisions, and context |
+| `devtrail_recent` | Recent sessions across tools |
+| `devtrail_decisions` | Active architectural decisions |
+| `devtrail_patterns` | Learned conventions and fixes |
+| `devtrail_entities` | Extracted libraries, systems, technologies |
+| `devtrail_stats` | Database stats and extraction health |
+| `devtrail_related` | Related concepts in the entity graph |
+| `devtrail_extract` | Force extraction from all sources |
+| `devtrail_sync` | Sync to IDE memory banks |
+| `devtrail_capture_session` | Push current session into memory |
+| `devtrail_project_brain` | Read project brain docs |
+
+**How it works:**
+
+```
+┌──────────┐     ┌──────────────┐     ┌──────────────┐
+│  Agent   │────▶│ DevTrail MCP │────▶│  SQLite DB   │
+│  (IDE)   │◀────│   Server     │◀────│  + vec       │
+└──────────┘     └──────────────┘     └──────────────┘
+                        │
+                        ▼ auto-extract on startup
+                 ┌──────────────┐
+                 │ Devin/Cursor │
+                 │ Claude/Git   │
+                 └──────────────┘
+```
+
 ## Project Brains
 
 DevTrail can host a private local “project brain” for each repository. These are designed to stay out of public repos by default because they often include private decisions, risks, notes, and planning artifacts.
@@ -334,7 +404,7 @@ Planned or proposed work includes:
 - Continue.dev support
 - Real embedding model integration
 - Consolidation pipeline
-- MCP server for Claude CLI
+- ~~MCP server for Claude CLI~~ ✅ Done
 - Automatic context injection for any IDE
 - Web UI for browsing memory
 - Cross-project entity linking
