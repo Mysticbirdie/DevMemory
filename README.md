@@ -98,6 +98,66 @@ DevTrail turns raw activity into a few durable primitives:
 - **File activity** — which files were touched and when.
 - **Embeddings** — semantic vectors for retrieval via `sqlite-vec`.
 
+## Importance Scoring
+
+Every session is auto-scored 1-5 on signal density:
+
+| Score | Label | What it means |
+|-------|-------|---------------|
+| 1 | Trivial | Chitchat, simple lookups |
+| 2 | Minor | One-liner fixes, small changes |
+| 3 | Moderate | Routine work, few files |
+| 4 | Significant | Architecture decisions, multi-file refactor |
+| 5 | Critical | Major design choice, complex bug fix, breaking change |
+
+Scoring factors: decision count, files touched, pattern richness, conversation depth, tool type, and architectural/bug/refactor keyword presence. Use `devtrail_importance` (MCP) or filter searches by `min_importance` to skip the noise.
+
+## Workspace Tagging
+
+Sessions are auto-tagged with their workspace/department based on:
+- Git repository name from file paths
+- Most common directory from file references
+- Tool metadata (working directory hints)
+
+This lets you query scoped memory: "What did I decide about auth in the **Birdhouse** workspace?"
+
+## TOON Compact State
+
+Inspired by Robert Ruby II's approach to managing 600k+ token contexts, DevTrail can generate **TOON** (Token-Optimized Object Notation) compact snapshots:
+
+- **Strips**: greetings, rephrased explanations, tool invocation chatter
+- **Keeps**: decisions, files, open threads, next steps, blockers, key entities
+- **Formats**: structured dict, dense markdown, or single-paragraph injection string
+
+Call `devtrail_compact_state` at session end to get a 200-token summary instead of a 20,000-token conversation dump — perfect for reinjecting into the next session's context window.
+
+Example TOON markdown output:
+```
+## Birdhouse [4/5]
+Workspace: Birdhouse | 2026-06-12
+
+[devin_local] | Decided: switched from Supabase to Firestore via MacCubeFACE
+| Touched 7 files | Topic: database migration
+
+D:
+  • Migrated auth from Supabase to Firebase
+  • Decided on MacCubeFACE for Firestore CRUD
+
+F:
+  • src/services/MacCubeService.ts (updated)
+  • src/hooks/useCoins.ts (refactored)
+
+N:
+  → Deploy functions to staging
+  → Update .env.example
+
+O:
+  ? Test coverage for coin service
+
+E: Firebase, Firestore, MacCubeFACE, React
+~180 tokens
+```
+
 ## Why This Exists
 
 Per-tool memory helps with cold start, but not with fragmentation. A `CLAUDE.md`, a plugin-generated `CLAUDE-CONTEXT.md`, or an IDE memory bank can help one assistant recover state after `/clear`, but those memories usually stay trapped inside that one tool. DevTrail is meant to sit underneath them as a neutral local layer that survives switching between models, CLIs, IDEs, and web UIs.
@@ -271,13 +331,16 @@ For Windsurf/Cascade, add to your user settings under `mcpServers`.
 
 | Tool | Purpose |
 |------|---------|
-| `devtrail_search` | Search sessions, decisions, and context |
+| `devtrail_search` | Search sessions, decisions, and context (supports workspace + importance filters) |
 | `devtrail_recent` | Recent sessions across tools |
 | `devtrail_decisions` | Active architectural decisions |
 | `devtrail_patterns` | Learned conventions and fixes |
 | `devtrail_entities` | Extracted libraries, systems, technologies |
-| `devtrail_stats` | Database stats and extraction health |
+| `devtrail_stats` | Database stats, importance distribution, workspace breakdown |
 | `devtrail_related` | Related concepts in the entity graph |
+| `devtrail_importance` | High-signal sessions only (score 3-5) |
+| `devtrail_workspaces` | List departments and session counts |
+| `devtrail_compact_state` | TOON token-optimized snapshot for context reinjection |
 | `devtrail_extract` | Force extraction from all sources |
 | `devtrail_sync` | Sync to IDE memory banks |
 | `devtrail_capture_session` | Push current session into memory |

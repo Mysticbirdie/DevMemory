@@ -29,14 +29,15 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from memory.db import (
-    init_db, search_sessions, get_recent_sessions, get_entities,
-    get_active_decisions, get_stats, DB_PATH
+    init_db, search_sessions, search_sessions_scoped, get_recent_sessions, get_entities,
+    get_active_decisions, get_stats, get_sessions_by_importance, get_sessions_by_workspace,
+    DB_PATH
 )
 from memory.extractors import (
     DevinLocalExtractor, CursorExtractor, VSCodeCopilotExtractor,
     AiderExtractor, ClaudeCLIExtractor, GitExtractor, OllamaExtractor
 )
-from memory.intelligence import EntityExtractor, SessionSummarizer
+from memory.intelligence import EntityExtractor, SessionSummarizer, ImportanceScorer, TOONCompactState, WorkspaceInferrer
 from memory.bridge import sync_all
 
 
@@ -102,6 +103,8 @@ class DevTrailMCPServer:
                 conn = init_db()
                 extractor = EntityExtractor()
                 summarizer = SessionSummarizer()
+                importance_scorer = ImportanceScorer()
+                workspace_inferrer = WorkspaceInferrer()
                 total = 0
 
                 for ExtractorClass in [
@@ -116,6 +119,8 @@ class DevTrailMCPServer:
                                 intel = extractor.extract_from_session(session)
                                 session["tags"] = intel["tags"]
                                 session["summary"] = summarizer.summarize(session)
+                                session["importance"] = importance_scorer.score(session, intel)
+                                session["workspace"] = workspace_inferrer.infer(session)
                                 from memory.db import (
                                     insert_session, insert_entity, insert_decision,
                                     insert_pattern, insert_file_activity, insert_entity_links
@@ -181,19 +186,28 @@ class DevTrailMCPServer:
         """Search across all stored sessions, decisions, and patterns."""
         query = args.get("query", "")
         limit = args.get("limit", 20)
+        workspace = args.get("workspace")
+        min_importance = args.get("min_importance")
         if not query:
             return {"results": [], "message": "No query provided"}
 
         conn = init_db()
-        results = search_sessions(conn, query, limit=limit)
+        if workspace or min_importance is not None:
+            results = search_sessions_scoped(conn, query, workspace=workspace, min_importance=min_importance, limit=limit)
+        else:
+            results = search_sessions(conn, query, limit=limit)
         conn.close()
 
         return {
             "query": query,
+            "workspace": workspace,
+            "min_importance": min_importance,
             "count": len(results),
             "results": [
                 {
                     "tool": r.get("tool"),
+                    "workspace": r.get("workspace"),
+                    "importance": r.get("importance", 3),
                     "date": r.get("started_at", "")[:10] if r.get("started_at") else "unknown",
                     "summary": r.get("summary", "No summary"),
                     "session_id": r.get("session_id"),
@@ -366,11 +380,15 @@ class DevTrailMCPServer:
                         source_results[key] = {"available": True, "sessions_found": len(sessions)}
                         continue
 
+                    importance_scorer = ImportanceScorer()
+                    workspace_inferrer = WorkspaceInferrer()
                     count = 0
                     for session in sessions:
                         intel = extractor.extract_from_session(session)
                         session["tags"] = intel["tags"]
                         session["summary"] = summarizer.summarize(session)
+                        session["importance"] = importance_scorer.score(session, intel)
+                        session["workspace"] = workspace_inferrer.infer(session)
                         from memory.db import (
                             insert_session, insert_entity, insert_decision,
                             insert_pattern, insert_file_activity, insert_entity_links
@@ -449,11 +467,15 @@ class DevTrailMCPServer:
         conn = init_db()
         extractor = EntityExtractor()
         summarizer = SessionSummarizer()
+        importance_scorer = ImportanceScorer()
+        workspace_inferrer = WorkspaceInferrer()
 
         intel = extractor.extract_from_session(session)
         session["tags"] = list(set(session["tags"] + intel["tags"]))
         if not summary:
             session["summary"] = summarizer.summarize(session)
+        session["importance"] = importance_scorer.score(session, intel)
+        session["workspace"] = workspace_inferrer.infer(session)
 
         from memory.db import (
             insert_session, insert_entity, insert_decision,
@@ -481,6 +503,8 @@ class DevTrailMCPServer:
         return {
             "stored": True,
             "session_id": sid,
+            "importance": session["importance"],
+            "workspace": session["workspace"],
             "entities_found": len(intel["entities"]),
             "decisions_found": len(intel["decisions"]),
             "patterns_found": len(intel["patterns"]),
@@ -520,18 +544,205 @@ class DevTrailMCPServer:
             "files": files,
         }
 
+    def tool_importance(self, args: Dict) -> Dict:
+        """Get high-importance sessions (score 3-5)."""
+        min_score = args.get("min_score", 3)
+        limit = args.get("limit", 20)
+        conn = init_db()
+        results = get_sessions_by_importance(conn, min_importance=min_score, limit=limit)
+        conn.close()
+
+        return {
+            "min_score": min_score,
+            "count": len(results),
+            "sessions": [
+                {
+                    "tool": r.get("tool"),
+                    "workspace": r.get("workspace"),
+                    "date": r.get("started_at", "")[:10] if r.get("started_at") else "unknown",
+                    "importance": r.get("importance", 3),
+                    "summary": r.get("summary", "No summary")[:120],
+                }
+                for r in results
+            ]
+        }
+
+    def tool_workspaces(self, args: Dict) -> Dict:
+        """List all workspaces/departments and session counts."""
+        conn = init_db()
+        cursor = conn.execute(
+            "SELECT workspace, COUNT(*), AVG(importance) FROM sessions WHERE workspace IS NOT NULL GROUP BY workspace ORDER BY COUNT(*) DESC"
+        )
+        rows = [dict(r) for r in cursor.fetchall()]
+        conn.close()
+
+        return {
+            "count": len(rows),
+            "workspaces": [
+                {
+                    "name": r.get("workspace"),
+                    "sessions": r.get("COUNT(*)"),
+                    "avg_importance": round(r.get("AVG(importance)", 3), 1),
+                }
+                for r in rows
+            ]
+        }
+
+    def tool_compact_state(self, args: Dict) -> Dict:
+        """Generate a TOON-compact state snapshot for a session or workspace.
+
+        This is the key tool for token-efficient context reinjection.
+        Call it at session end to get a dense, machine-parseable summary
+        that can be injected into the next session without burning tokens.
+        """
+        session_id = args.get("session_id")
+        workspace = args.get("workspace")
+        format_type = args.get("format", "dict")  # dict, markdown, injection
+
+        conn = init_db()
+
+        if session_id:
+            # Single session compact
+            cursor = conn.execute("SELECT * FROM sessions WHERE session_id = ?", (session_id,))
+            row = cursor.fetchone()
+            if not row:
+                conn.close()
+                return {"error": f"Session {session_id} not found"}
+            session = dict(row)
+            # Reconstruct turns
+            cursor = conn.execute("SELECT * FROM turns WHERE session_id = ? ORDER BY turn_number", (session_id,))
+            session["turns"] = [dict(r) for r in cursor.fetchall()]
+        elif workspace:
+            # Aggregate compact for workspace
+            cursor = conn.execute(
+                "SELECT * FROM sessions WHERE workspace = ? ORDER BY started_at DESC LIMIT 10",
+                (workspace,)
+            )
+            sessions = [dict(r) for r in cursor.fetchall()]
+            if not sessions:
+                conn.close()
+                return {"error": f"No sessions found for workspace: {workspace}"}
+            # Aggregate into a workspace state
+            return self._aggregate_workspace_compact(conn, sessions, format_type)
+        else:
+            conn.close()
+            return {"error": "Provide session_id or workspace"}
+
+        conn.close()
+
+        # Generate TOON compact
+        toon = TOONCompactState()
+        from memory.intelligence import EntityExtractor
+        intel = EntityExtractor().extract_from_session(session)
+        compact = toon.compact(session, intel)
+
+        if format_type == "markdown":
+            return {"compact": toon.render_markdown(compact), "session_id": session_id}
+        elif format_type == "injection":
+            return {"compact": toon.render_injection(compact), "session_id": session_id}
+        else:
+            return {"compact": compact, "session_id": session_id}
+
+    def _aggregate_workspace_compact(self, conn, sessions: List[Dict], format_type: str) -> Dict:
+        """Aggregate TOON state across multiple sessions in a workspace."""
+        toon = TOONCompactState()
+        from memory.intelligence import EntityExtractor
+        extractor = EntityExtractor()
+
+        all_decisions = []
+        all_files = []
+        all_open_threads = []
+        all_next_steps = []
+        all_entities = set()
+        all_blockers = []
+
+        for sess in sessions:
+            cursor = conn.execute("SELECT * FROM turns WHERE session_id = ? ORDER BY turn_number", (sess["session_id"],))
+            sess["turns"] = [dict(r) for r in cursor.fetchall()]
+            intel = extractor.extract_from_session(sess)
+            compact = toon.compact(sess, intel)
+
+            all_decisions.extend(compact.get("decisions", []))
+            all_files.extend(compact.get("files", []))
+            all_open_threads.extend(compact.get("open_threads", []))
+            all_next_steps.extend(compact.get("next_steps", []))
+            all_entities.update(compact.get("entities", []))
+            all_blockers.extend(compact.get("blockers", []))
+
+        # Deduplicate
+        def dedupe(items):
+            seen = set()
+            out = []
+            for i in items:
+                k = i.lower()[:50]
+                if k not in seen:
+                    seen.add(k)
+                    out.append(i)
+            return out
+
+        aggregate = {
+            "toon_version": "1.0-aggregate",
+            "workspace": sessions[0].get("workspace", "unknown"),
+            "session_count": len(sessions),
+            "decisions": dedupe(all_decisions)[:10],
+            "files": dedupe(all_files)[:15],
+            "open_threads": dedupe(all_open_threads)[:8],
+            "next_steps": dedupe(all_next_steps)[:8],
+            "entities": sorted(all_entities)[:15],
+            "blockers": dedupe(all_blockers)[:5],
+        }
+
+        if format_type == "markdown":
+            lines = [
+                f"## {aggregate['workspace']} Workspace State",
+                f"Based on {aggregate['session_count']} recent sessions",
+                "",
+            ]
+            if aggregate["decisions"]:
+                lines.append("D:")
+                for d in aggregate["decisions"]:
+                    lines.append(f"  • {d}")
+                lines.append("")
+            if aggregate["next_steps"]:
+                lines.append("N:")
+                for n in aggregate["next_steps"]:
+                    lines.append(f"  → {n}")
+                lines.append("")
+            if aggregate["open_threads"]:
+                lines.append("O:")
+                for o in aggregate["open_threads"]:
+                    lines.append(f"  ? {o}")
+                lines.append("")
+            return {"compact": "\n".join(lines), "workspace": aggregate["workspace"]}
+        elif format_type == "injection":
+            parts = []
+            if aggregate["decisions"]:
+                parts.append("Decided: " + "; ".join(aggregate["decisions"][:3]))
+            if aggregate["next_steps"]:
+                parts.append("Next: " + "; ".join(aggregate["next_steps"][:3]))
+            if aggregate["open_threads"]:
+                parts.append("Open: " + "; ".join(aggregate["open_threads"][:2]))
+            text = " | ".join(parts)
+            if len(text) > 1000:
+                text = text[:997] + "..."
+            return {"compact": text, "workspace": aggregate["workspace"]}
+        else:
+            return {"compact": aggregate, "workspace": aggregate["workspace"]}
+
 
 # ── Tool Schema Definitions ────────────────────────────────────────────────
 
 TOOLS = [
     {
         "name": "devtrail_search",
-        "description": "Search DevTrail memory for sessions, decisions, and context matching a query.",
+        "description": "Search DevTrail memory for sessions, decisions, and context matching a query. Optionally filter by workspace and importance.",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "query": {"type": "string", "description": "Search query (e.g., 'Redis lock', 'auth refactor')"},
                 "limit": {"type": "integer", "default": 20, "description": "Max results to return"},
+                "workspace": {"type": "string", "description": "Filter to a specific workspace/department"},
+                "min_importance": {"type": "integer", "minimum": 1, "maximum": 5, "description": "Filter out low-importance sessions"},
             },
             "required": ["query"],
         },
@@ -655,6 +866,34 @@ TOOLS = [
             "type": "object",
             "properties": {
                 "repo_path": {"type": "string", "description": "Path to repository root. Defaults to current working directory."},
+            },
+        },
+    },
+    {
+        "name": "devtrail_importance",
+        "description": "Get high-importance sessions (score 3-5). Filter out noise and chitchat.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "min_score": {"type": "integer", "default": 3, "minimum": 1, "maximum": 5, "description": "Minimum importance score (1-5)"},
+                "limit": {"type": "integer", "default": 20},
+            },
+        },
+    },
+    {
+        "name": "devtrail_workspaces",
+        "description": "List all workspaces/departments and their session counts.",
+        "inputSchema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "devtrail_compact_state",
+        "description": "Generate a TOON-compact state snapshot for a session or workspace. Ultra-dense, token-optimized summary for context reinjection. Formats: dict (structured), markdown (human), injection (agent context).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "session_id": {"type": "string", "description": "Specific session ID to compact"},
+                "workspace": {"type": "string", "description": "Aggregate all recent sessions in a workspace"},
+                "format": {"type": "string", "enum": ["dict", "markdown", "injection"], "default": "dict", "description": "Output format: structured dict, markdown, or single-paragraph injection string"},
             },
         },
     },

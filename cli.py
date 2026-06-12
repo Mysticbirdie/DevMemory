@@ -19,7 +19,7 @@ from memory.extractors import (
     ClaudeArtifactsExtractor, ClaudeCanvasExtractor, GitExtractor,
     OllamaExtractor
 )
-from memory.intelligence import EntityExtractor, SessionSummarizer
+from memory.intelligence import EntityExtractor, SessionSummarizer, ImportanceScorer, WorkspaceInferrer
 
 
 def _output(data, args):
@@ -52,17 +52,23 @@ def cmd_init(args):
     conn.close()
 
 
-def _ingest_sessions(conn, sessions, extractor, summarizer) -> int:
+def _ingest_sessions(conn, sessions, extractor, summarizer, importance_scorer=None, workspace_inferrer=None) -> int:
     """Run intelligence over sessions and persist everything to the DB.
 
     Persists: session + turns, entities, decisions, patterns, entity
     co-occurrence links, and file activity. (Shared by all extractors.)
     """
+    importance_scorer = importance_scorer or ImportanceScorer()
+    workspace_inferrer = workspace_inferrer or WorkspaceInferrer()
     count = 0
     for session in sessions:
         intel = extractor.extract_from_session(session)
         session["tags"] = intel["tags"]
         session["summary"] = summarizer.summarize(session)
+
+        # Score importance and infer workspace
+        session["importance"] = importance_scorer.score(session, intel)
+        session["workspace"] = workspace_inferrer.infer(session)
 
         session_id = insert_session(conn, session)
         count += 1
@@ -538,7 +544,7 @@ def cmd_import_web(args):
     
     conn = init_db()
     from memory.db import insert_session, insert_entity, insert_decision
-    from memory.intelligence import EntityExtractor, SessionSummarizer
+    from memory.intelligence import EntityExtractor, SessionSummarizer, ImportanceScorer, WorkspaceInferrer
     
     intel_extractor = EntityExtractor()
     summarizer = SessionSummarizer()
@@ -575,7 +581,7 @@ def _import_sessions(extractor, label: str, args):
     """Generic session importer for Claude web features."""
     conn = init_db()
     from memory.db import insert_session, insert_entity, insert_decision
-    from memory.intelligence import EntityExtractor, SessionSummarizer
+    from memory.intelligence import EntityExtractor, SessionSummarizer, ImportanceScorer, WorkspaceInferrer
     
     intel_extractor = EntityExtractor()
     summarizer = SessionSummarizer()

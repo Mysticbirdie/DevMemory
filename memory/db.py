@@ -36,6 +36,8 @@ def init_db(db_path: Optional[Path] = None) -> sqlite3.Connection:
             summary TEXT,
             tags TEXT,
             raw_content TEXT,
+            importance INTEGER DEFAULT 3,
+            workspace TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -139,9 +141,23 @@ def init_db(db_path: Optional[Path] = None) -> sqlite3.Connection:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_entities_type ON entities(type)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_decisions_status ON decisions(status)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_file_activity_path ON file_activity(file_path)")
-    
+
+    # ── Schema migrations (safe for existing DBs) ─────────────────────────
+    _migrate_sessions(conn)
+
     conn.commit()
     return conn
+
+
+def _migrate_sessions(conn: sqlite3.Connection):
+    """Add columns that may be missing from older DBs."""
+    cursor = conn.execute("PRAGMA table_info(sessions)")
+    columns = {row[1] for row in cursor.fetchall()}
+
+    if "importance" not in columns:
+        conn.execute("ALTER TABLE sessions ADD COLUMN importance INTEGER DEFAULT 3")
+    if "workspace" not in columns:
+        conn.execute("ALTER TABLE sessions ADD COLUMN workspace TEXT")
 
 
 def insert_session(conn: sqlite3.Connection, session_data: Dict) -> str:
@@ -149,8 +165,8 @@ def insert_session(conn: sqlite3.Connection, session_data: Dict) -> str:
     session_id = session_data.get("session_id", f"{session_data['tool']}_{datetime.now().isoformat()}")
     
     conn.execute("""
-        INSERT OR REPLACE INTO sessions (tool, session_id, started_at, ended_at, summary, tags, raw_content)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT OR REPLACE INTO sessions (tool, session_id, started_at, ended_at, summary, tags, raw_content, importance, workspace)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         session_data.get("tool"),
         session_id,
@@ -158,7 +174,9 @@ def insert_session(conn: sqlite3.Connection, session_data: Dict) -> str:
         session_data.get("ended_at"),
         session_data.get("summary"),
         json.dumps(session_data.get("tags", [])) if isinstance(session_data.get("tags"), list) else session_data.get("tags"),
-        session_data.get("raw_content")
+        session_data.get("raw_content"),
+        session_data.get("importance", 3),
+        session_data.get("workspace")
     ))
     
     # Insert turns
@@ -383,13 +401,70 @@ def insert_embedding(conn: sqlite3.Connection, session_id: str, text: str):
 def get_stats(conn: sqlite3.Connection) -> Dict:
     """Get database statistics."""
     stats = {}
-    
+
     for table in ["sessions", "turns", "entities", "decisions", "patterns", "file_activity"]:
         cursor = conn.execute(f"SELECT COUNT(*) FROM {table}")
         stats[table] = cursor.fetchone()[0]
-    
+
     # Tool breakdown
     cursor = conn.execute("SELECT tool, COUNT(*) FROM sessions GROUP BY tool")
     stats["tools"] = {row[0]: row[1] for row in cursor.fetchall()}
-    
+
+    # Importance distribution
+    cursor = conn.execute("SELECT importance, COUNT(*) FROM sessions GROUP BY importance")
+    stats["importance_distribution"] = {row[0]: row[1] for row in cursor.fetchall()}
+
+    # Workspace breakdown
+    cursor = conn.execute("SELECT workspace, COUNT(*) FROM sessions WHERE workspace IS NOT NULL GROUP BY workspace")
+    stats["workspaces"] = {row[0]: row[1] for row in cursor.fetchall()}
+
     return stats
+
+
+def get_sessions_by_importance(conn: sqlite3.Connection, min_importance: int = 3, limit: int = 20) -> List[Dict]:
+    """Get sessions at or above a given importance threshold."""
+    cursor = conn.execute("""
+        SELECT * FROM sessions
+        WHERE importance >= ?
+        ORDER BY importance DESC, started_at DESC
+        LIMIT ?
+    """, (min_importance, limit))
+    return [dict(row) for row in cursor.fetchall()]
+
+
+def get_sessions_by_workspace(conn: sqlite3.Connection, workspace: str, limit: int = 20) -> List[Dict]:
+    """Get sessions for a specific workspace/department."""
+    cursor = conn.execute("""
+        SELECT * FROM sessions
+        WHERE workspace = ?
+        ORDER BY started_at DESC
+        LIMIT ?
+    """, (workspace, limit))
+    return [dict(row) for row in cursor.fetchall()]
+
+
+def search_sessions_scoped(conn: sqlite3.Connection, query: str, workspace: Optional[str] = None,
+                           min_importance: Optional[int] = None, limit: int = 10) -> List[Dict]:
+    """Search with workspace and importance filters."""
+    search_term = f"%{query}%"
+    sql = """
+        SELECT s.*, t.content as turn_content
+        FROM sessions s
+        LEFT JOIN turns t ON s.session_id = t.session_id
+        WHERE (s.summary LIKE ? OR s.raw_content LIKE ? OR t.content LIKE ?)
+    """
+    params = [search_term, search_term, search_term]
+
+    if workspace:
+        sql += " AND s.workspace = ?"
+        params.append(workspace)
+
+    if min_importance is not None:
+        sql += " AND s.importance >= ?"
+        params.append(min_importance)
+
+    sql += " GROUP BY s.session_id ORDER BY s.importance DESC, s.started_at DESC LIMIT ?"
+    params.append(limit)
+
+    cursor = conn.execute(sql, params)
+    return [dict(row) for row in cursor.fetchall()]
