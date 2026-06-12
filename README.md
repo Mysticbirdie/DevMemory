@@ -2,7 +2,7 @@
 
 DevTrail is a local CLI tool that captures and unifies your AI coding history across tools into a single searchable memory layer on your machine. It extracts conversations, decisions, entities, patterns, and Git activity into a SQLite database so you can recover context after tool switching, context-window loss, or long gaps between sessions.
 
-It is designed for developers who move between Claude, Cursor, Devin, Aider, VS Code + Copilot, Git, and similar tools and want one place to ask: *what did I decide, where did this change come from, and what was I doing last time?*
+It is designed for developers who move between Claude, Cursor, Devin, Aider, VS Code + Copilot, Ollama, Git, and similar tools and want one place to ask: *what did I decide, where did this change come from, and what was I doing last time?*
 
 **What DevTrail is:**
 - A local SQLite-backed memory database for AI-assisted development.
