@@ -84,6 +84,7 @@ If `extract --all` reports zero sessions, that usually means DevTrail did not fi
 | Claude CLI | Conversations, project memory | Reads `~/.claude/` files | Ready  |
 | Claude Web | Exported chat JSON from claude.ai | Parses export files | Ready  |
 | Git | Commits, file changes, diffs | `git log` with stats | Ready  |
+| Ollama | Local/cloud model inventory, chat history | Reads `~/.ollama/` + API | Ready  |
 
 ## What DevTrail Stores
 
@@ -186,6 +187,7 @@ This schema is meant to support both simple search and richer context reconstruc
 | `extract --aider` | Extract from Aider CLI.  |
 | `extract --claude` | Extract from Claude CLI.  |
 | `extract --git` | Extract from Git history.  |
+| `extract --ollama` | Extract Ollama model inventory + chats.  |
 | `search <query>` | Full-text search across all tools.  |
 | `recent --days N` | Show recent sessions.  |
 | `entities` | Show extracted concepts.  |
