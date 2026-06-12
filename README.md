@@ -119,7 +119,7 @@ Sessions are auto-tagged with their workspace/department based on:
 - Most common directory from file references
 - Tool metadata (working directory hints)
 
-This lets you query scoped memory: "What did I decide about auth in the **Birdhouse** workspace?"
+This lets you query scoped memory: "What did I decide about auth in the **backend** workspace?"
 
 ## TOON Compact State
 
@@ -133,28 +133,28 @@ Call `devtrail_compact_state` at session end to get a 200-token summary instead 
 
 Example TOON markdown output:
 ```
-## Birdhouse [4/5]
-Workspace: Birdhouse | 2026-06-12
+## session_2026-06-12 [4/5]
+Workspace: api-service | 2026-06-12
 
-[devin_local] | Decided: switched from Supabase to Firestore via MacCubeFACE
-| Touched 7 files | Topic: database migration
+[devin_local] | Decided: switched from ORM to raw SQL for performance
+| Touched 7 files | Topic: database optimization
 
 D:
-  • Migrated auth from Supabase to Firebase
-  • Decided on MacCubeFACE for Firestore CRUD
+  • Migrated user queries to raw SQL
+  • Decided on connection pooling with PgBouncer
 
 F:
-  • src/services/MacCubeService.ts (updated)
-  • src/hooks/useCoins.ts (refactored)
+  • src/services/UserService.ts (updated)
+  • src/db/pool.ts (refactored)
 
 N:
-  → Deploy functions to staging
-  → Update .env.example
+  → Deploy to staging
+  → Update migration docs
 
 O:
-  ? Test coverage for coin service
+  ? Benchmark under load
 
-E: Firebase, Firestore, MacCubeFACE, React
+E: PostgreSQL, PgBouncer, TypeScript
 ~180 tokens
 ```
 
@@ -374,7 +374,9 @@ Each project can include:
 - `repo-facts.json` — machine-readable repo stats
 - `prompts/` — reusable agent prompts for planning
 
-Example layout:
+Project brains live in `projects/<name>/` and are **gitignored by default** — they contain private decisions, risks, and release plans that should never be committed to a public repo. Store them locally or in a private repo.
+
+**To use a project brain:**
 
 ```bash
 projects/<name>/
