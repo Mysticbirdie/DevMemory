@@ -243,7 +243,12 @@ class OllamaExtractor(BaseExtractor):
             "raw_content": json.dumps({"local": local_models, "cloud": cloud_models, "excluded": excluded}),
             "turns": [
                 {
-                    "role": "system",
+                    "role": "user",
+                    "content": "What coding models are available in Ollama?",
+                    "timestamp": now
+                },
+                {
+                    "role": "assistant",
                     "content": content,
                     "timestamp": now
                 }
